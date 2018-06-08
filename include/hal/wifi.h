@@ -38,14 +38,16 @@ typedef struct {
 } hal_wifi_scan_result_t;
 
 typedef struct {
+    char ssid[32];    /* The SSID of an access point. */
+    char ap_power;    /* Signal strength, min:0, max:100 */
+    char bssid[6];    /* The BSSID of an access point. */
+    char channel;     /* The RF frequency, 1-13 */
+    uint8_t security; /* Security type, @ref wlan_sec_type_t */
+} ap_list_adv_t;
+
+typedef struct {
     char ap_num;          /* The number of access points found in scanning. */
-    struct {
-        char ssid[32];    /* The SSID of an access point. */
-        char ap_power;    /* Signal strength, min:0, max:100 */
-        char bssid[6];    /* The BSSID of an access point. */
-        char channel;     /* The RF frequency, 1-13 */
-        uint8_t security; /* Security type, @ref wlan_sec_type_t */
-    } *ap_list;
+    ap_list_adv_t *ap_list;
 } hal_wifi_scan_result_adv_t;
 
 typedef enum {
@@ -67,8 +69,8 @@ typedef struct {
 
 typedef struct {
     char wifi_mode;              /* DHCP mode: @ref wlanInterfaceTypedef. */
-    char wifi_ssid[32];          /* SSID of the wlan needs to be connected. */
-    char wifi_key[64];           /* Security key of the wlan needs to be connected, ignored in an open system. */
+    char wifi_ssid[32 + 1];          /* SSID of the wlan needs to be connected. */
+    char wifi_key[64 + 1];           /* Security key of the wlan needs to be connected, ignored in an open system. */
     char local_ip_addr[16];      /* Static IP configuration, Local IP address. */
     char net_mask[16];           /* Static IP configuration, Netmask. */
     char gateway_ip_addr[16];    /* Static IP configuration, Router IP address. */
@@ -157,6 +159,7 @@ struct hal_wifi_module_s {
 
     int  (*init)(hal_wifi_module_t *m);
     void (*get_mac_addr)(hal_wifi_module_t *m, uint8_t *mac);
+    void (*set_mac_addr)(hal_wifi_module_t *m, const uint8_t *mac);
     int  (*start)(hal_wifi_module_t *m, hal_wifi_init_type_t *init_para);
     int  (*start_adv)(hal_wifi_module_t *m,
                       hal_wifi_init_type_adv_t *init_para_adv);
@@ -171,13 +174,25 @@ struct hal_wifi_module_s {
     int  (*suspend_station)(hal_wifi_module_t *m);
     int  (*suspend_soft_ap)(hal_wifi_module_t *m);
     int  (*set_channel)(hal_wifi_module_t *m, int ch);
+    int  (*get_channel)(hal_wifi_module_t *m);
+    int  (*get_channel_list)(hal_wifi_module_t *m, const uint8_t **chnlist);
     void (*start_monitor)(hal_wifi_module_t *m);
     void (*stop_monitor)(hal_wifi_module_t *m);
     void (*register_monitor_cb)(hal_wifi_module_t *m, monitor_data_cb_t fn);
     void (*register_wlan_mgnt_monitor_cb)(hal_wifi_module_t *m, monitor_data_cb_t fn);
     int  (*wlan_send_80211_raw_frame)(hal_wifi_module_t *m, uint8_t *buf, int len);
+
+    /* debug related */
     void (*start_debug_mode)(hal_wifi_module_t *m);
     void (*stop_debug_mode)(hal_wifi_module_t *m);
+
+    /* mesh related */
+    void (*mesh_register_cb)(hal_wifi_module_t *m, monitor_data_cb_t fn);
+    void (*mesh_set_bssid)(hal_wifi_module_t *m, const uint8_t *mac);
+    int  (*mesh_enable)(hal_wifi_module_t *m);
+    int  (*mesh_disable)(hal_wifi_module_t *m);
+    int  (*mesh_radio_sleep)(hal_wifi_module_t *m);
+    int  (*mesh_radio_wakeup)(hal_wifi_module_t *m);
 };
 
 /**
@@ -211,8 +226,20 @@ int hal_wifi_init(void);
  *
  * @param[in]   m    the wifi instance, NULL if default.
  * @param[out]  mac  the place to hold the result.
+ *
+ * @return  0 on success, otherwise failure.
  */
-void hal_wifi_get_mac_addr(hal_wifi_module_t *m, uint8_t *mac);
+int hal_wifi_get_mac_addr(hal_wifi_module_t *m, uint8_t *mac);
+
+/**
+ * Set the MAC address of the specified wifi instance.
+ *
+ * @param[in]   m    the wifi instance, NULL if default.
+ * @param[in]   mac  mac value
+ *
+ * @return  0 on success, otherwise failure.
+ */
+int hal_wifi_set_mac_addr(hal_wifi_module_t *m, const uint8_t *mac);
 
 /**
  * Start the wifi instance.
@@ -325,6 +352,25 @@ int hal_wifi_suspend_soft_ap(hal_wifi_module_t *m);
 int hal_wifi_set_channel(hal_wifi_module_t *m, int ch);
 
 /**
+ * Get the channel of the wifi instance.
+ *
+ * @param[in]  m  the wifi instance, NULL if default.
+ *
+ * @return     -1 on failure, otherwise current channel number.
+ */
+int hal_wifi_get_channel(hal_wifi_module_t *m);
+
+/**
+ * Get the channel list of the wifi instance.
+ *
+ * @param[in]  m  the wifi instance, NULL if default.
+ * @param[out]  chnlist  channel list in array
+ *
+ * @return     -1 on failure, otherwise number of available channels.
+ */
+int hal_wifi_get_channel_list(hal_wifi_module_t *m, const uint8_t **chnlist);
+
+/**
  * Start the monitor mode of the wifi instance.
  *
  * @param[in]  m  the wifi instance, NULL if default.
@@ -345,6 +391,23 @@ void hal_wifi_stop_wifi_monitor(hal_wifi_module_t *m);
  * @param[in]  fn  the callback function.
  */
 void hal_wifi_register_monitor_cb(hal_wifi_module_t *m, monitor_data_cb_t fn);
+
+/**
+ * Register management frame montior callback on the wifi instance.
+ *
+ * @param[in]  m   the wifi instance, NULL if default.
+ * @param[in]  fn  the callback function.
+ */
+void hal_wlan_register_mgnt_monitor_cb(hal_wifi_module_t *m, monitor_data_cb_t fn);
+
+/**
+ * Send 802.11 raw frame
+ *
+ * @param[in]  m   the wifi instance, NULL if default.
+ * @param[in]  buf frame buffer.
+ * @param[in]  len length of frame buffer.
+ */
+int hal_wlan_send_80211_raw_frame(hal_wifi_module_t *m, uint8_t *buf, int len);
 
 /**
  * Start debug mode of the wifi instance.
@@ -370,6 +433,13 @@ void hal_wifi_stop_debug_mode(hal_wifi_module_t *m);
  * @param[in]  cb  the event callback function info.
  */
 void hal_wifi_install_event(hal_wifi_module_t *m, const hal_wifi_event_cb_t *cb);
+
+/**
+ * Regster a wifi instance to the uMesh
+ *
+ * @param[in]  m  the wifi instance.
+ */
+void hal_umesh_register_wifi(hal_wifi_module_t *m);
 
 #endif /* HAL_WIFI_H */
 

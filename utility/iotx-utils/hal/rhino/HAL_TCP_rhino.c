@@ -4,9 +4,13 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <stdint.h>
 
 #include <aos/network.h>
-#include <errno.h>
+#include <aos/errno.h>
+#include <stdlib.h>
+#include "iot_import.h"
+
 //#include "aliot_platform_network.h"
 
 #define PLATFORM_RHINOSOCK_LOG(format, ...) \
@@ -15,6 +19,7 @@
         fflush(stdout);\
     }while(0);
 
+
 #ifndef CONFIG_NO_TCPIP
 uintptr_t HAL_TCP_Establish(const char *host, uint16_t port)
 {
@@ -22,7 +27,7 @@ uintptr_t HAL_TCP_Establish(const char *host, uint16_t port)
     struct addrinfo *addrInfoList = NULL;
     struct addrinfo *cur = NULL;
     int fd = 0;
-    int rc = 0;
+    int rc = -1;
     char service[6];
 
     memset(&hints, 0, sizeof(hints));
@@ -35,41 +40,41 @@ uintptr_t HAL_TCP_Establish(const char *host, uint16_t port)
     sprintf(service, "%u", port);
 
     if ((rc = getaddrinfo(host, service, &hints, &addrInfoList)) != 0) {
-        perror("getaddrinfo error");
-        return 0;
+        PLATFORM_RHINOSOCK_LOG("getaddrinfo error");
+        return rc;
     }
 
     for (cur = addrInfoList; cur != NULL; cur = cur->ai_next) {
         if (cur->ai_family != AF_INET) {
-            perror("socket type error");
-            rc = 0;
+            PLATFORM_RHINOSOCK_LOG("socket type error");
+            rc = -1;
             continue;
         }
 
         fd = socket(cur->ai_family, cur->ai_socktype, cur->ai_protocol);
         if (fd < 0) {
-            perror("create socket error");
-            rc = 0;
+            PLATFORM_RHINOSOCK_LOG("create socket error");
+            rc = -1;
             continue;
         }
 
         if (connect(fd, cur->ai_addr, cur->ai_addrlen) == 0) {
+            PLATFORM_RHINOSOCK_LOG("socket connect success");
             rc = fd;
             break;
         }
 
         close(fd);
-        perror("connect error");
-        rc = 0;
+        PLATFORM_RHINOSOCK_LOG("connect error");
+        rc = -1;
     }
-
-    if (0 == rc){
+    
+    if (-1 == rc){
         PLATFORM_RHINOSOCK_LOG("fail to establish tcp");
     } else {
         PLATFORM_RHINOSOCK_LOG("success to establish tcp, fd=%d", rc);
     }
     freeaddrinfo(addrInfoList);
-
     return (uintptr_t)rc;
 }
 
@@ -137,7 +142,7 @@ int32_t HAL_TCP_Write(uintptr_t fd, const char *buf, uint32_t len, uint32_t time
                 }
 
                 err_code = -1;
-                perror("select-write fail");
+                PLATFORM_RHINOSOCK_LOG("select-write fail");
                 break;
             }
         }
@@ -155,7 +160,7 @@ int32_t HAL_TCP_Write(uintptr_t fd, const char *buf, uint32_t len, uint32_t time
                 }
 
                 err_code = -1;
-                perror("send fail");
+                PLATFORM_RHINOSOCK_LOG("send fail");
                 break;
             }
         }
@@ -220,20 +225,77 @@ int32_t HAL_TCP_Read(uintptr_t fd, char *buf, uint32_t len, uint32_t timeout_ms)
     return (0 != len_recv) ? len_recv : err_code;
 }
 #else
+#if defined(STM32_USE_SPI_WIFI)
+#include "stm32_wifi.h"
+
+#define WIFI_WRITE_TIMEOUT   200
+#define WIFI_READ_TIMEOUT    200
+#define WIFI_PAYLOAD_SIZE    ES_WIFI_PAYLOAD_SIZE
+#define WIFI_READ_RETRY_TIME 5
+const char *g_host;
 uintptr_t HAL_TCP_Establish(const char *host, uint16_t port)
 {
-    return 0;
+    WIFI_Status_t ret;
+    uint8_t ip_addr[4];
+    int fd = 1;
+    g_host = host;
+    ret = WIFI_GetHostAddress((char *)host, ip_addr);
+    if (ret != WIFI_STATUS_OK) {
+        PLATFORM_RHINOSOCK_LOG("HAL_TCP_Establish: get host addr fail - %d\n", ret);
+        return (uintptr_t)-1;
+    }
+
+    ret = WIFI_OpenClientConnection(0, WIFI_TCP_PROTOCOL, "", ip_addr, port, 0);
+    if (ret != WIFI_STATUS_OK) {
+        PLATFORM_RHINOSOCK_LOG("HAL_TCP_Establish: open client fail - %d\n", ret);
+        return (uintptr_t)-1;
+    }
+    return fd;
 }
 int32_t HAL_TCP_Destroy(uintptr_t fd)
 {
+    WIFI_Status_t ret;
+
+
+    ret = WIFI_CloseClientConnection(0);
+    if (ret != WIFI_STATUS_OK) {
+        PLATFORM_RHINOSOCK_LOG("HAL_TCP_Destroy: close client fail - %d\n", ret);
+        return -1;
+    }
     return 0;
 }
 int32_t HAL_TCP_Write(uintptr_t fd, const char *buf, uint32_t len, uint32_t timeout_ms)
 {
-    return 0;
+    WIFI_Status_t ret;
+    uint16_t send_size;
+
+
+    ret = WIFI_SendData(0,
+                        (uint8_t *)buf, len,
+                        &send_size, WIFI_WRITE_TIMEOUT);
+    if (ret != WIFI_STATUS_OK) {
+        PLATFORM_RHINOSOCK_LOG("HAL_TCP_Write: send data fail - %d\n", ret);
+        return -1;
+    }
+    return send_size;
 }
 int32_t HAL_TCP_Read(uintptr_t fd, char *buf, uint32_t len, uint32_t timeout_ms)
 {
-    return 0;
+    WIFI_Status_t ret;
+    uint16_t recv_size;
+
+
+    if (len > WIFI_PAYLOAD_SIZE) {
+        len = WIFI_PAYLOAD_SIZE;
+    }
+    ret = WIFI_ReceiveData(0,
+                            (uint8_t *)buf, (uint16_t)len,
+                            &recv_size, WIFI_READ_TIMEOUT);
+    if (ret != WIFI_STATUS_OK) {
+        PLATFORM_RHINOSOCK_LOG("HAL_TCP_Read: receive data fail - %d\n", ret);
+        return -1;
+    }
+    return recv_size;
 }
+#endif
 #endif

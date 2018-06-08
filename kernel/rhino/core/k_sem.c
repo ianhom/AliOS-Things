@@ -21,9 +21,6 @@ static kstat_t sem_create(ksem_t *sem, const name_t *name, sem_count_t count,
     sem->peak_count         = count;
     sem->blk_obj.name       = name;
     sem->blk_obj.blk_policy = BLK_POLICY_PRI;
-#if (RHINO_CONFIG_KOBJ_SET > 0)
-    sem->blk_obj.handle = NULL;
-#endif
     sem->mm_alloc_flag      = mm_alloc_flag;
 
 #if (RHINO_CONFIG_SYSTEM_STATS > 0)
@@ -175,11 +172,12 @@ static kstat_t sem_give(ksem_t *sem, uint8_t opt_wake_all)
     }
 
     cur_cpu_num = cpu_cur_get();
+    (void)cur_cpu_num;
 
     blk_list_head = &sem->blk_obj.blk_list;
 
     if (is_klist_empty(blk_list_head)) {
-        if (sem->count == (sem_count_t) - 1) {
+        if (sem->count == (sem_count_t)-1) {
 
             TRACE_SEM_OVERFLOW(g_active_task[cur_cpu_num], sem);
             RHINO_CRITICAL_EXIT();
@@ -196,12 +194,6 @@ static kstat_t sem_give(ksem_t *sem, uint8_t opt_wake_all)
 
         TRACE_SEM_CNT_INCREASE(g_active_task[cur_cpu_num], sem);
         RHINO_CRITICAL_EXIT();
-
-#if (RHINO_CONFIG_KOBJ_SET > 0)
-        if (sem->blk_obj.handle != NULL) {
-            sem->blk_obj.handle->notify((blk_obj_t *)sem, sem->blk_obj.handle);
-        }
-#endif
         return RHINO_SUCCESS;
     }
 
@@ -289,15 +281,11 @@ kstat_t krhino_sem_take(ksem_t *sem, tick_t ticks)
 
     RHINO_CRITICAL_EXIT_SCHED();
 
-#ifndef RHINO_CONFIG_PERF_NO_PENDEND_PROC
     RHINO_CPU_INTRPT_DISABLE();
 
     stat = pend_state_end_proc(g_active_task[cpu_cur_get()]);
 
     RHINO_CPU_INTRPT_ENABLE();
-#else
-    stat = RHINO_SUCCESS;
-#endif
 
     return stat;
 }
@@ -345,20 +333,14 @@ kstat_t krhino_sem_count_set(ksem_t *sem, sem_count_t sem_count)
 
 kstat_t krhino_sem_count_get(ksem_t *sem, sem_count_t *count)
 {
+    CPSR_ALLOC();
+
     NULL_PARA_CHK(sem);
     NULL_PARA_CHK(count);
-    *count = sem->count;
 
-    return RHINO_SUCCESS;
-}
-
-kstat_t krhino_sem_is_valid(ksem_t *sem)
-{
-    NULL_PARA_CHK(sem);
-
-    if (sem->blk_obj.obj_type != RHINO_SEM_OBJ_TYPE) {
-        return RHINO_KOBJ_TYPE_ERR;
-    }
+    RHINO_CRITICAL_ENTER();
+   *count = sem->count;
+    RHINO_CRITICAL_EXIT();
 
     return RHINO_SUCCESS;
 }

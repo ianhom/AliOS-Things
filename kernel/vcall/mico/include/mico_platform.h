@@ -9,7 +9,7 @@
 
 #include "common.h"
 
-#include "platform.h" /* This file is unique for each platform */
+//#include "platform.h" /* This file is unique for each platform */
 #include "platform_peripheral.h"
 
 #ifdef __cplusplus
@@ -27,7 +27,7 @@ typedef platform_spi_slave_command_t            mico_spi_slave_command_t;
 typedef platform_spi_slave_data_buffer_t        mico_spi_slave_data_buffer_t;
 
 
-
+#if 0
 #include "MiCODrivers/MiCODriverI2c.h"
 #include "MiCODrivers/MiCODriverSpi.h"
 #include "MiCODrivers/MiCODriverUart.h"
@@ -39,12 +39,10 @@ typedef platform_spi_slave_data_buffer_t        mico_spi_slave_data_buffer_t;
 #include "MiCODrivers/MiCODriverRng.h"
 #include "MiCODrivers/MiCODriverFlash.h"
 #include "MiCODrivers/MiCODriverMFiAuth.h"
+#endif
 
 #define mico_mcu_powersave_config MicoMcuPowerSaveConfig
 
-#ifdef USE_MICO_SPI_FLASH
-extern const mico_spi_device_t mico_spi_flash;
-#endif
 
 /** @defgroup MICO_PLATFORM  MICO Hardware Abstract Layer APIs
 *   @brief Control hardware peripherals on different platfroms using standard HAL API functions

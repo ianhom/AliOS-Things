@@ -15,7 +15,7 @@ typedef struct {
     work_handle_t handle;
     void         *arg;
     tick_t        dly;
-    ktimer_t      timer;
+    ktimer_t     *timer;
     void         *wq;
     uint8_t       work_exit;
 } kwork_t;
@@ -40,13 +40,6 @@ typedef struct {
  */
 kstat_t krhino_workqueue_create(kworkqueue_t *workqueue, const name_t *name,
                                 uint8_t pri, cpu_stack_t *stack_buf, size_t stack_size);
-
-/**
- * This function will delete a workqueue
- * @param[in]  workqueue  the workqueue to be deleted
- * @return  the operation status, RHINO_SUCCESS is OK, others is error
- */
-kstat_t krhino_workqueue_del(kworkqueue_t *workqueue);
 
 /**
  * This function will initialize a work

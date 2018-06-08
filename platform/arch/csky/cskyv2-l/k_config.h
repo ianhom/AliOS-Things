@@ -39,10 +39,6 @@
 #define RHINO_CONFIG_KOBJ_SET                1
 #endif
 
-/* kernel dynamic tick conf */
-#ifndef RHINO_CONFIG_DYNTICKLESS
-#define RHINO_CONFIG_DYNTICKLESS             0
-#endif
 /*
 #ifndef RHINO_CONFIG_TICKS_PER_SECOND
 #define RHINO_CONFIG_TICKS_PER_SECOND        100
@@ -60,6 +56,9 @@
 #define RHINO_CONFIG_TIMER                   1
 #endif
 */
+#ifndef RHINO_CONFIG_TASK_STACK_CUR_CHECK
+#define RHINO_CONFIG_TASK_STACK_CUR_CHECK    1
+#endif
 
 /* kernel task conf */
 #ifndef RHINO_CONFIG_TASK_SUSPEND
@@ -72,20 +71,16 @@
 #define RHINO_CONFIG_TASK_DEL                1
 #endif
 #ifndef RHINO_CONFIG_TASK_WAIT_ABORT
-#define RHINO_CONFIG_TASK_WAIT_ABORT         0
+#define RHINO_CONFIG_TASK_WAIT_ABORT         1
 #endif
 #ifndef RHINO_CONFIG_TASK_STACK_OVF_CHECK
 #define RHINO_CONFIG_TASK_STACK_OVF_CHECK    1
 #endif
-#if (RHINO_CONFIG_DYNTICKLESS > 0)
+
 #ifndef RHINO_CONFIG_SCHED_RR
 #define RHINO_CONFIG_SCHED_RR                0
 #endif
-#else
-#ifndef RHINO_CONFIG_SCHED_RR
-#define RHINO_CONFIG_SCHED_RR                1
-#endif
-#endif
+
 #ifndef RHINO_CONFIG_TIME_SLICE_DEFAULT
 #define RHINO_CONFIG_TIME_SLICE_DEFAULT      50
 #endif
@@ -98,7 +93,7 @@
 
 /* kernel workqueue conf */
 #ifndef RHINO_CONFIG_WORKQUEUE
-#define RHINO_CONFIG_WORKQUEUE               1
+#define RHINO_CONFIG_WORKQUEUE               0
 #endif
 
 /* kernel timer&tick conf */
@@ -120,19 +115,11 @@
 #ifndef RHINO_CONFIG_TICKS_PER_SECOND
 #define RHINO_CONFIG_TICKS_PER_SECOND        100
 #endif
-/* must be 2^n size!, such as 1, 2, 4, 8, 16,32, etc....... */
-#if (RHINO_CONFIG_DYNTICKLESS > 0)
-#ifndef RHINO_CONFIG_TICK_HEAD_ARRAY
-#define RHINO_CONFIG_TICK_HEAD_ARRAY         1
-#endif
-#else
-#ifndef RHINO_CONFIG_TICK_HEAD_ARRAY
-#define RHINO_CONFIG_TICK_HEAD_ARRAY         8
-#endif
-#endif
+
 #ifndef RHINO_CONFIG_TIMER_TASK_STACK_SIZE
 #define RHINO_CONFIG_TIMER_TASK_STACK_SIZE   200
 #endif
+
 #ifndef RHINO_CONFIG_TIMER_RATE
 #define RHINO_CONFIG_TIMER_RATE              1
 #endif
@@ -177,7 +164,7 @@
 
 /* kernel hook conf */
 #ifndef RHINO_CONFIG_USER_HOOK
-#define RHINO_CONFIG_USER_HOOK               1
+#define RHINO_CONFIG_USER_HOOK               0
 #endif
 
 /* kernel stats conf */
@@ -197,7 +184,7 @@
 #define RHINO_CONFIG_CPU_USAGE_TASK_PRI      (RHINO_CONFIG_PRI_MAX - 2)
 #endif
 #ifndef RHINO_CONFIG_TASK_SCHED_STATS
-#define RHINO_CONFIG_TASK_SCHED_STATS        1
+#define RHINO_CONFIG_TASK_SCHED_STATS        0
 #endif
 #ifndef RHINO_CONFIG_CPU_USAGE_TASK_STACK
 #define RHINO_CONFIG_CPU_USAGE_TASK_STACK    256

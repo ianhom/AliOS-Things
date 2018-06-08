@@ -1,18 +1,13 @@
 NAME := mesh
 
-$(NAME)_TYPE := kernel
+$(NAME)_MBINS_TYPE := kernel
 GLOBAL_INCLUDES += include
-
-$(NAME)_CFLAGS += -Wall -Werror
 GLOBAL_DEFINES += CONFIG_AOS_MESH
 
-PLATFORM := linuxhost
-ifeq ($(HOST_ARCH), linux)
-PLATFORM := linuxhost
-$(NAME)_PREBUILT_LIBRARY := lib/$(PLATFORM)/libmesh.a
-else ifeq ($(HOST_ARCH), ARM968E-S)
-PLATFORM := mk3060
-$(NAME)_PREBUILT_LIBRARY := lib/$(PLATFORM)/libmesh.a
+ifeq ($(COMPILER),armcc)
+$(NAME)_PREBUILT_LIBRARY := lib/$(HOST_ARCH)/keil/mesh.a
+else ifeq ($(COMPILER),iar)
+$(NAME)_PREBUILT_LIBRARY := lib/$(HOST_ARCH)/iar/mesh.a
 else
-$(error "not find correct platform!")
+$(NAME)_PREBUILT_LIBRARY := lib/$(HOST_ARCH)/gcc/mesh.a
 endif

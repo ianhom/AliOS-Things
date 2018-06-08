@@ -9,8 +9,10 @@ void kobj_list_init(void)
 {
     klist_init(&(g_kobj_list.task_head));
     klist_init(&(g_kobj_list.mutex_head));
-    //klist_init(&(g_kobj_list.mmpool_head));
+
+#if (RHINO_CONFIG_MM_BLK > 0)
     klist_init(&(g_kobj_list.mblkpool_head));
+#endif
 
 #if (RHINO_CONFIG_SEM > 0)
     klist_init(&(g_kobj_list.sem_head));
@@ -35,11 +37,14 @@ void kobj_list_init(void)
 void krhino_stack_ovf_check(void)
 {
     cpu_stack_t *stack_start;
+    uint8_t      i;
 
     stack_start = g_active_task[cpu_cur_get()]->task_stack_base;
 
-    if (*stack_start != RHINO_TASK_STACK_OVF_MAGIC) {
-        k_err_proc(RHINO_TASK_STACK_OVF);
+    for (i = 0; i < RHINO_CONFIG_STK_CHK_WORDS; i++) {
+        if (*stack_start++ != RHINO_TASK_STACK_OVF_MAGIC) {
+            k_err_proc(RHINO_TASK_STACK_OVF);
+        }
     }
 
     if ((cpu_stack_t *)(g_active_task[cpu_cur_get()]->task_stack) < stack_start) {
@@ -53,12 +58,16 @@ void krhino_stack_ovf_check(void)
 {
     cpu_stack_t *stack_start;
     cpu_stack_t *stack_end;
+    uint8_t      i;
 
     stack_start = g_active_task[cpu_cur_get()]->task_stack_base;
-    stack_end   = stack_start + g_active_task[cpu_cur_get()]->stack_size;
+    stack_end   = stack_start + g_active_task[cpu_cur_get()]->stack_size
+                  - RHINO_TASK_STACK_OVF_MAGIC;
 
-    if (*(stack_end - 1) != RHINO_TASK_STACK_OVF_MAGIC) {
-        k_err_proc(RHINO_TASK_STACK_OVF);
+    for (i = 0; i < RHINO_CONFIG_STK_CHK_WORDS; i++) {
+        if (*stack_end++ != RHINO_TASK_STACK_OVF_MAGIC) {
+            k_err_proc(RHINO_TASK_STACK_OVF);
+        }
     }
 
     if ((cpu_stack_t *)(g_active_task[cpu_cur_get()]->task_stack) > stack_end) {
@@ -72,6 +81,7 @@ void krhino_stack_ovf_check(void)
 void krhino_task_sched_stats_reset(void)
 {
     lr_timer_t cur_time;
+    uint32_t   i;
 
 #if (RHINO_CONFIG_DISABLE_INTRPT_STATS > 0)
     g_cur_intrpt_disable_max_time = 0;
@@ -83,7 +93,9 @@ void krhino_task_sched_stats_reset(void)
 
     /* system first task starting time should be measured otherwise not correct */
     cur_time = (lr_timer_t)LR_COUNT_GET();
-    g_preferred_ready_task->task_time_start = cur_time;
+    for (i = 0; i < RHINO_CONFIG_CPU_NUM; i++) {
+        g_preferred_ready_task[i]->task_time_start = cur_time;
+    }
 }
 
 void krhino_task_sched_stats_get(void)
@@ -183,85 +195,28 @@ void krhino_overhead_measure(void)
 
 /*it should be called in cpu_stats task*/
 #if (RHINO_CONFIG_CPU_USAGE_STATS > 0)
-void krhino_cpu_usage_stats_init(void)
-{
-
-    klist_t *taskhead = &g_kobj_list.task_head;
-    klist_t *stats_item = NULL;
-    ktask_t *task = NULL;
-
-    krhino_sched_disable();
-
-    for (stats_item = taskhead->next; stats_item != taskhead;
-         stats_item = stats_item->next) {
-        task = krhino_list_entry(stats_item, ktask_t, task_stats_item);
-
-        if (
-#if (RHINO_CONFIG_TICK_TASK > 0)
-            (task != (ktask_t *)&g_tick_task) &&
-#endif
-#if (RHINO_CONFIG_TIMER > 0)
-            (task != (ktask_t *)&g_idle_task[cpu_cur_get()]) &&
-#endif
-            (task != (ktask_t *)&g_active_task[cpu_cur_get()])) {
-            krhino_task_suspend(task);
-        }
-    }
-
-    krhino_sched_enable();
-
-    idle_count_set(0u);
-
-    krhino_task_sleep(RHINO_CONFIG_TICKS_PER_SECOND);
-
-    g_idle_count_max = idle_count_get();
-
-    krhino_sched_disable();
-
-    for (stats_item = taskhead->next; stats_item != taskhead;
-         stats_item = stats_item->next) {
-        task = krhino_list_entry(stats_item, ktask_t, task_stats_item);
-
-        if (
-#if (RHINO_CONFIG_TICK_TASK > 0)
-            (task != (ktask_t *)&g_tick_task) &&
-#endif
-#if (RHINO_CONFIG_TIMER > 0)
-            (task != (ktask_t *)&g_idle_task[cpu_cur_get()]) &&
-#endif
-            (task != (ktask_t *)&g_active_task[cpu_cur_get()])) {
-            krhino_task_resume(task);
-        }
-    }
-
-    krhino_sched_enable();
-
-}
-
 static void cpu_usage_task_entry(void *arg)
 {
     idle_count_t idle_count;
 
     (void)arg;
 
-    krhino_cpu_usage_stats_init();
-
     while (1) {
         idle_count_set(0u);
 
-        krhino_task_sleep(RHINO_CONFIG_TICKS_PER_SECOND);
+        krhino_task_sleep(RHINO_CONFIG_TICKS_PER_SECOND / 2);
 
         idle_count = idle_count_get();
+
+        if (idle_count > g_idle_count_max) {
+            g_idle_count_max = idle_count;
+        }
 
         if (idle_count < g_idle_count_max) {
             /* use 64bit for cpu_task_idle_count  to avoid overflow quickly */
             g_cpu_usage = 10000 - (uint32_t)((idle_count * 10000) / g_idle_count_max);
-
-        }
-
-        if (g_cpu_usage > g_cpu_usage_max) {
-            g_cpu_usage_max = g_cpu_usage;
-
+        } else {
+            g_cpu_usage = 10000;
         }
     }
 }

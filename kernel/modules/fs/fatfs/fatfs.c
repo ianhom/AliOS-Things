@@ -1,7 +1,7 @@
 /*
  * Copyright (C) 2015-2017 Alibaba Group Holding Limited
  */
-
+#include <stdio.h>
 #include <string.h>
 #include <sys/fcntl.h>
 #include "fatfs.h"
@@ -175,8 +175,12 @@ static char* translate_relative_path(const char *path)
 
     memset(relpath, 0, len + 1);
     memcpy(relpath, g_fsid[pdrv].id, strlen(g_fsid[pdrv].id));
-    p = (char *)(path + strlen(g_fsid[pdrv].root) + 1);
-    memcpy(relpath + strlen(g_fsid[pdrv].id), p, len - prefix_len - 1);
+
+    if (len > prefix_len) {
+        p = (char *)(path + strlen(g_fsid[pdrv].root) + 1);
+        memcpy(relpath + strlen(g_fsid[pdrv].id), p, len - prefix_len - 1);
+    }
+
     relpath[len] = '\0';
     
     return relpath;
@@ -548,7 +552,7 @@ static int fatfs_dev_unregister(int pdrv)
     return err;
 }
 
-int fatfs_register()
+int fatfs_register(void)
 {
     int err = -EINVAL;
 
@@ -570,7 +574,7 @@ int fatfs_register()
     return err;
 }
 
-int fatfs_unregister()
+int fatfs_unregister(void)
 {
     int err = -EINVAL;
 

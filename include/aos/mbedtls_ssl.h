@@ -12,6 +12,8 @@
 #endif
 
 #include <stdlib.h>
+#include <aos/aos.h>
+
 
 /**
  * Create a ssl connect.

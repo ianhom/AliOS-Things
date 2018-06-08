@@ -5,6 +5,7 @@
 #ifndef AOS_KERNEL_H
 #define AOS_KERNEL_H
 
+#include <stddef.h>
 #include <sys/types.h>
 
 #ifdef __cplusplus
@@ -12,6 +13,7 @@ extern "C" {
 #endif
 
 #define AOS_WAIT_FOREVER    0xffffffffu
+#define AOS_NO_WAIT         0x0
 #define AOS_DEFAULT_APP_PRI 32
 
 typedef struct {
@@ -24,6 +26,7 @@ typedef aos_hdl_t aos_sem_t;
 typedef aos_hdl_t aos_queue_t;
 typedef aos_hdl_t aos_timer_t;
 typedef aos_hdl_t aos_work_t;
+typedef aos_hdl_t aos_event_t;
 
 typedef struct {
     void *hdl;
@@ -168,7 +171,7 @@ int aos_mutex_unlock(aos_mutex_t *mutex);
  *
  * @param[in]  mutex  pointer to the mutex.
  *
- * @return  0: success.
+ * @return  0: invalid, 1: valid.
  */
 int aos_mutex_is_valid(aos_mutex_t *mutex);
 
@@ -213,7 +216,7 @@ void aos_sem_signal(aos_sem_t *sem);
  *
  * @param[in]  sem  pointer to the semaphore.
  *
- * @return  0: success.
+ * @return  0: invalid, 1: valid.
  */
 int aos_sem_is_valid(aos_sem_t *sem);
 
@@ -225,6 +228,64 @@ int aos_sem_is_valid(aos_sem_t *sem);
 void aos_sem_signal_all(aos_sem_t *sem);
 
 /**
+ * This function will create an event with an initialization flag set.
+ * This function should not be called from interrupt context.
+ *
+ * @param[in]  event    event object pointer.
+ * @param[in]  flags    initialization flag set(provided by caller).
+ *
+ * @return  0: success.
+ */
+
+int aos_event_new(aos_event_t *event, unsigned int flags);
+
+/**
+ * This function will free an event.
+ * This function shoud not be called from interrupt context.
+ *
+ * @param[in]  event    memory refered by hdl pointer in event will be freed.
+ *
+ * @return  N/A.
+ */
+
+void aos_event_free(aos_event_t *event);
+
+/**
+ * This function will try to get flag set from given event, if the request flag
+ * set is satisfied, it will return immediately, if the request flag set is not
+ * satisfied with timeout(RHINO_WAIT_FOREVER,0xFFFFFFFF), the caller task will be
+ * pended on event until the flag is satisfied, if the request flag is not 
+ * satisfied with timeout(RHINO_NO_WAIT, 0x0), it will also return immediately.
+ * Note, this function should not be called from interrupt context because it has
+ * possible to lead context switch and an interrupt has no TCB to save context.
+ *
+ * @param[in]  event        event object pointer.
+ * @param[in]  flags        request flag set.
+ * @param[in]  opt          operation type, such as AND,OR,AND_CLEAR,OR_CLEAR.
+ * @param[out] actl_flags   the internal flags value hold by event.
+ * @param[in]  flags        request flag set.
+ * @param[in]  timeout      max wait time in millisecond.
+ *
+ * @return  0: success.
+ */
+
+int aos_event_get(aos_event_t *event, unsigned int flags, unsigned char opt,
+                       unsigned int *actl_flags, unsigned int timeout);
+
+/**
+* This function will set flag set to given event, and it will check if any task
+* which is pending on the event should be waken up. 
+*
+* @param[in]  event    event object pointer.
+* @param[in]  flags    flag set to be set into event.
+* @param[in]  opt      operation type, such as AND,OR.
+*
+* @return  0: success.
+*/
+
+int aos_event_set(aos_event_t *event, unsigned int flags, unsigned char opt);
+
+/**
  * This function will create a queue.
  *
  * @param[in]  queue    pointer to the queue(the space is provided by user).
@@ -234,6 +295,7 @@ void aos_sem_signal_all(aos_sem_t *sem);
  *
  * @return  0: success.
  */
+
 int aos_queue_new(aos_queue_t *queue, void *buf, unsigned int size, int max_msg);
 
 /**
@@ -271,7 +333,7 @@ int aos_queue_recv(aos_queue_t *queue, unsigned int ms, void *msg, unsigned int 
  *
  * @param[in]  queue  pointer to the queue.
  *
- * @return  0: success.
+ * @return  0: invalid, 1: valid.
  */
 int aos_queue_is_valid(aos_queue_t *queue);
 
@@ -285,21 +347,7 @@ int aos_queue_is_valid(aos_queue_t *queue);
 void *aos_queue_buf_ptr(aos_queue_t *queue);
 
 /**
- * This function will disable kernel sched.
- *
- * @return  the operation status, 0 is OK, others is error.
- */
-int aos_sched_disable(void);
-
-/**
- * This function will enable kernel sched.
- *
- * @return  0: success.
- */
-int aos_sched_enable(void);
-
-/**
- * This function will create a timer.
+ * This function will create a timer and run auto.
  *
  * @param[in]  timer   pointer to the timer.
  * @param[in]  fn      callbak of the timer.
@@ -311,6 +359,21 @@ int aos_sched_enable(void);
  */
 int aos_timer_new(aos_timer_t *timer, void (*fn)(void *, void *),
                   void *arg, int ms, int repeat);
+
+/**
+ * This function will create a timer.
+ *
+ * @param[in]  timer   pointer to the timer.
+ * @param[in]  fn      callbak of the timer.
+ * @param[in]  arg     the argument of the callback.
+ * @param[in]  ms      ms of the normal timer triger.
+ * @param[in]  repeat  repeat or not when the timer is created.
+ * @param[in]  auto_run  run auto or not when the timer is created.
+ *
+ * @return  0: success.
+ */
+int aos_timer_new_ext(aos_timer_t *timer, void (*fn)(void *, void *),
+                  void *arg, int ms, int repeat, unsigned char auto_run);
 
 /**
  * This function will delete a timer.
@@ -357,13 +420,6 @@ int aos_timer_change(aos_timer_t *timer, int ms);
  * @return  0: success.
  */
 int aos_workqueue_create(aos_workqueue_t *workqueue, int pri, int stack_size);
-
-/**
- * This function will delete a workqueue.
- *
- * @param[in]  workqueue  the workqueue to be deleted.
- */
-void aos_workqueue_del(aos_workqueue_t *workqueue);
 
 /**
  * This function will initialize a work.
@@ -475,6 +531,16 @@ long long aos_now_ms(void);
  * @param[in]  ms  sleep time in milliseconds.
  */
 void aos_msleep(int ms);
+
+/**
+ * Initialize system
+ */
+void aos_init(void);
+
+/**
+ * Start system
+ */
+void aos_start(void);
 
 #ifdef __cplusplus
 }

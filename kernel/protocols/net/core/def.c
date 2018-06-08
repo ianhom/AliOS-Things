@@ -56,6 +56,8 @@
 
 #include "lwip/opt.h"
 #include "lwip/def.h"
+#include <aos/aos.h>
+
 
 #include <string.h>
 
@@ -73,6 +75,7 @@ lwip_htons(u16_t n)
 {
   return (u16_t)PP_HTONS(n);
 }
+
 #endif /* lwip_htons */
 
 #if !defined(lwip_htonl)
@@ -87,6 +90,7 @@ lwip_htonl(u32_t n)
 {
   return (u32_t)PP_HTONL(n);
 }
+
 #endif /* lwip_htonl */
 
 #endif /* BYTE_ORDER == LITTLE_ENDIAN */

@@ -8,11 +8,12 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
-
 #include <aos/aos.h>
-
 #include <arg_options.h>
 
+#ifndef CONFIG_VCALL_POSIX
+#include <k_api.h>
+#endif
 
 #define TAG "main"
 
@@ -28,15 +29,16 @@ extern void rl_cleanup_after_signal(void);
 extern void hw_start_hal(options_t *poptions);
 extern void trace_start();
 extern void netmgr_init(void);
-extern int aos_framework_init(void);
-extern int aos_cli_init(void);
+extern int  aos_framework_init(void);
+extern int  aos_cli_init(void);
+extern void cpu_tmr_sync(void);
 
 static options_t options = { 0 };
+static kinit_t kinit = { 0 };
 
 static void aos_features_init(void);
 static void signal_handler(int signo);
 static int  setrlimit_for_vfs(void);
-extern int application_start(int argc, char **argv);
 
 static void exit_clean(void)
 {
@@ -49,6 +51,14 @@ static void app_entry(void *arg)
 {
     int i = 0;
 
+    kinit.argc        = options.argc;
+    kinit.argv        = options.argv;
+    kinit.cli_enable  = options.cli.enable;
+
+#ifndef CONFIG_VCALL_POSIX
+    cpu_tmr_sync();
+#endif
+
     aos_features_init();
 
 #ifdef CONFIG_AOS_MESHYTS
@@ -58,38 +68,21 @@ static void app_entry(void *arg)
 #endif
     hw_start_hal(&options);
 
-#ifdef AOS_VFS
-    vfs_init();
-    vfs_device_init();
-#endif
-
-#ifdef CONFIG_AOS_CLI
-    if (options.cli.enable)
-        aos_cli_init();
-#endif
-
-#ifdef AOS_KV
-    aos_kv_init();
-#endif
-
-#ifdef AOS_LOOP
-    aos_loop_init();
-#endif
-
-#ifdef AOS_FRAMEWORK_COMMON
-    aos_framework_init();
-#endif
-
-#ifdef VCALL_RHINO
-    trace_start();    
-#endif
-
-    application_start(options.argc, options.argv);
+    aos_kernel_init(&kinit);
 }
 
-static void start_app()
+static void start_app(void)
 {
+#ifndef CONFIG_VCALL_POSIX
+#if (RHINO_CONFIG_CPU_NUM > 1)
+    ktask_t     *app_task;
+    krhino_task_cpu_dyn_create(&app_task, "app_task", 0, 20, 0, 2048, app_entry, 0, 1);
+#else
     aos_task_new("app", app_entry, NULL, 8192);
+#endif
+#else
+    aos_task_new("app", app_entry, NULL, 8192);
+#endif
 }
 
 int csp_get_args(const char ***pargv)
@@ -169,7 +162,7 @@ int main(int argc, char **argv)
 
     atexit(exit_clean);
 
-    krhino_init();
+    aos_init();
 
     ret = setrlimit_for_vfs();
     if (ret != 0) {
@@ -184,9 +177,9 @@ int main(int argc, char **argv)
     tfs_emulate_id2_index = options.id2_index;
 #endif
 
-    start_app(argc, argv);
+    start_app();
 
-    krhino_start();
+    aos_start();
 
     return ret;
 }

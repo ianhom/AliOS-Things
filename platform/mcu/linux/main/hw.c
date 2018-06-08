@@ -46,11 +46,18 @@ static int open_flash(int pno, bool w)
     else
         flash_fd = open(fn, O_RDONLY);
 
-    if (flash_fd < 0) {
-        umask(0111);
-        close(creat(fn, S_IRWXU | S_IRWXG));
-        flash_fd = open(fn, O_RDWR);
+    if (flash_fd >= 0) {
+        goto out;
     }
+
+    umask(0111);
+    flash_fd = creat(fn, S_IRWXU | S_IRWXG);
+    if (flash_fd < 0)
+        goto out;
+
+    close(flash_fd);
+    flash_fd = open(fn, O_RDWR);
+out:
     return flash_fd;
 }
 
@@ -87,7 +94,7 @@ int32_t hal_flash_write(hal_partition_t pno, uint32_t* poff, const void* buf ,ui
     ret = pwrite(flash_fd, origin, buf_size, *poff);
     if (ret < 0)
         perror("error writing flash:");
-    else if (poff)
+    else
         *poff += ret;
 
 exit:
@@ -98,14 +105,19 @@ exit:
 
 int32_t hal_flash_read(hal_partition_t pno, uint32_t* poff, void* buf, uint32_t buf_size)
 {
-    int flash_fd = open_flash(pno, false);
+    int flash_fd;
+
+    if (poff == NULL)
+        return -1;
+
+    flash_fd = open_flash(pno, false);
     if (flash_fd < 0)
         return -1;
 
     int ret = pread(flash_fd, buf, buf_size, *poff);
     if (ret < 0)
         perror("error reading flash:");
-    else if (poff)
+    else
         *poff += ret;
     close(flash_fd);
 
@@ -149,32 +161,28 @@ void hal_reboot(void)
 
 static void _timer_cb(void *timer, void *arg)
 {
-    hal_timer_t *tmr = arg;
-    tmr->cb(tmr->arg);
+    timer_dev_t *tmr = arg;
+    tmr->config.cb(tmr->config.arg);
 }
 
-void hal_timer_init(hal_timer_t *tmr, unsigned int period, unsigned char auto_reload, unsigned char ch, hal_timer_cb_t cb, void *arg)
+int32_t hal_timer_init(timer_dev_t *tim)
 {
-    (void)ch;
-    bzero(tmr, sizeof(*tmr));
-    tmr->cb = cb;
-    tmr->arg = arg;
-    if (auto_reload > 0u) {
-        krhino_timer_dyn_create((ktimer_t **)&tmr->priv, "hwtmr", _timer_cb,
-                                us2tick(period), us2tick(period), tmr, 0);
+    if (tim->config.reload_mode == TIMER_RELOAD_AUTO) {
+        krhino_timer_dyn_create((ktimer_t **)&tim->priv, "hwtmr", _timer_cb,
+                                us2tick(tim->config.period), us2tick(tim->config.period), tim, 0);
     }
     else {
-        krhino_timer_dyn_create((ktimer_t **)&tmr->priv, "hwtmr", _timer_cb,
-                                us2tick(period), 0, tmr, 0);
+        krhino_timer_dyn_create((ktimer_t **)&tim->priv, "hwtmr", _timer_cb,
+                                us2tick(tim->config.period), 0, tim, 0);
     }
 }
 
-int hal_timer_start(hal_timer_t *tmr)
+int hal_timer_start(timer_dev_t *tmr)
 {
     return krhino_timer_start(tmr->priv);
 }
 
-void hal_timer_stop(hal_timer_t *tmr)
+void hal_timer_stop(timer_dev_t *tmr)
 {
     krhino_timer_stop(tmr->priv);
     krhino_timer_dyn_del(tmr->priv);
@@ -216,7 +224,11 @@ int csp_printf(const char *fmt, ...)
 }
 #endif
 
+#if defined(DEV_SAL_MK3060)
+extern hal_wifi_module_t aos_wifi_module_mk3060;
+#else
 extern hal_wifi_module_t sim_aos_wifi_linux;
+#endif
 extern struct hal_ota_module_s linuxhost_ota_module;
 uart_dev_t uart_0;
 
@@ -238,7 +250,11 @@ void hw_start_hal(options_t *poptions)
 #endif
 
 #ifdef AOS_HAL
+#if defined(DEV_SAL_MK3060)
+    hal_wifi_register_module(&aos_wifi_module_mk3060);
+#else
     hal_wifi_register_module(&sim_aos_wifi_linux);
+#endif
     hal_ota_register_module(&linuxhost_ota_module);
 #endif
 

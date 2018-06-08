@@ -41,6 +41,9 @@
 #ifndef RHINO_CONFIG_MM_TLF
 #define RHINO_CONFIG_MM_TLF                  1
 #endif
+#ifndef RHINO_CONFIG_MM_TLF_BLK_SIZE
+#define RHINO_CONFIG_MM_TLF_BLK_SIZE         8192
+#endif
 #ifndef RHINO_CONFIG_MM_MAXMSIZEBIT
 #define RHINO_CONFIG_MM_MAXMSIZEBIT          24
 #endif
@@ -67,6 +70,9 @@
 #endif
 #ifndef RHINO_CONFIG_TASK_DEL
 #define RHINO_CONFIG_TASK_DEL                1
+#endif
+#ifndef RHINO_CONFIG_TASK_STACK_CUR_CHECK
+#define RHINO_CONFIG_TASK_STACK_CUR_CHECK    1
 #endif
 #ifndef RHINO_CONFIG_TASK_WAIT_ABORT
 #define RHINO_CONFIG_TASK_WAIT_ABORT         1
@@ -180,7 +186,7 @@
 #define RHINO_CONFIG_DISABLE_SCHED_STATS     1
 #endif
 #ifndef RHINO_CONFIG_DISABLE_INTRPT_STATS
-#define RHINO_CONFIG_DISABLE_INTRPT_STATS    1
+#define RHINO_CONFIG_DISABLE_INTRPT_STATS    0
 #endif
 #ifndef RHINO_CONFIG_CPU_USAGE_STATS
 #define RHINO_CONFIG_CPU_USAGE_STATS         0
@@ -201,8 +207,10 @@
 #endif
 
 #ifndef RHINO_CONFIG_CPU_NUM
-#define RHINO_CONFIG_CPU_NUM                 1
+#define RHINO_CONFIG_CPU_NUM                 2
 #endif
+
+#define RHINO_SCHED_NONE_PREEMPT             1
 
 #endif /* K_CONFIG_H */
 

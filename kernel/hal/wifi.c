@@ -26,7 +26,6 @@ void hal_wifi_register_module(hal_wifi_module_t *module)
 
 }
 
-
 int hal_wifi_init(void)
 {
     int          err = 0;
@@ -41,16 +40,33 @@ int hal_wifi_init(void)
     return err;
 }
 
-
-void hal_wifi_get_mac_addr(hal_wifi_module_t *m, uint8_t *mac)
+int hal_wifi_get_mac_addr(hal_wifi_module_t *m, uint8_t *mac)
 {
     if (m == NULL) {
         m = hal_wifi_get_default_module();
     }
 
-    m->get_mac_addr(m, mac);
+    if (m && m->get_mac_addr) {
+        m->get_mac_addr(m, mac);
+        return 0;
+    }
+
+    return -1;
 }
 
+int hal_wifi_set_mac_addr(hal_wifi_module_t *m, const uint8_t *mac)
+{
+    if (m == NULL) {
+        m = hal_wifi_get_default_module();
+    }
+
+    if (m && m->set_mac_addr) {
+        m->set_mac_addr(m, mac);
+        return 0;
+    }
+
+    return -1;
+}
 
 int hal_wifi_start(hal_wifi_module_t *m, hal_wifi_init_type_t *init_para)
 {
@@ -58,9 +74,11 @@ int hal_wifi_start(hal_wifi_module_t *m, hal_wifi_init_type_t *init_para)
         m = hal_wifi_get_default_module();
     }
 
+    if (m == NULL)
+        return -1;
+
     return m->start(m, init_para);
 }
-
 
 int  hal_wifi_start_adv(hal_wifi_module_t *m, hal_wifi_init_type_adv_t *init_para_adv)
 {
@@ -152,7 +170,6 @@ int hal_wifi_suspend_soft_ap(hal_wifi_module_t *m)
     return m->suspend_soft_ap(m);
 }
 
-
 int hal_wifi_set_channel(hal_wifi_module_t *m, int ch)
 {
     if (m == NULL) {
@@ -160,6 +177,24 @@ int hal_wifi_set_channel(hal_wifi_module_t *m, int ch)
     }
 
     return m->set_channel(m, ch);
+}
+
+int hal_wifi_get_channel(hal_wifi_module_t *m)
+{
+    if (m == NULL) {
+        m = hal_wifi_get_default_module();
+    }
+
+    return m->get_channel(m);
+}
+
+int hal_wifi_get_channel_list(hal_wifi_module_t *m, const uint8_t **chnlist)
+{
+    if (m == NULL) {
+        m = hal_wifi_get_default_module();
+    }
+
+    return m->get_channel_list(m, chnlist);
 }
 
 void hal_wifi_start_wifi_monitor(hal_wifi_module_t *m)
@@ -191,6 +226,8 @@ void hal_wifi_register_monitor_cb(hal_wifi_module_t *m, monitor_data_cb_t fn)
 
 void hal_wifi_install_event(hal_wifi_module_t *m, const hal_wifi_event_cb_t *cb)
 {
+    if (NULL == m)
+        return;
     m->ev_cb = cb;
 }
 
@@ -222,7 +259,7 @@ void hal_wifi_start_debug_mode(hal_wifi_module_t *m)
         return;
     }
 
-    return m->start_debug_mode(m);
+    m->start_debug_mode(m);
 }
 
 void hal_wifi_stop_debug_mode(hal_wifi_module_t *m)
@@ -235,5 +272,5 @@ void hal_wifi_stop_debug_mode(hal_wifi_module_t *m)
         return;
     }
 
-    return m->stop_debug_mode(m);
+    m->stop_debug_mode(m);
 }

@@ -16,6 +16,7 @@
 
 #define COAP_DEFAULT_SCHEME      "coap" /* the default scheme for CoAP URIs */
 #define COAP_DEFAULT_HOST_LEN    128
+#define NULL_STR                 "NULL"
 
 unsigned int CoAPUri_parse(char *p_uri, coap_address_t *p_addr,
                            coap_endpoint_type *p_endpoint_type, char host[COAP_DEFAULT_HOST_LEN])
@@ -76,12 +77,12 @@ unsigned int CoAPUri_parse(char *p_uri, coap_address_t *p_addr,
         memset(host, 0x00, COAP_DEFAULT_HOST_LEN);
         strncpy(host , p, q - p);
     }
-    COAP_DEBUG("The host name is: %s\r\n", host);
+    COAP_DEBUG("The host name is: %s\r\n", host ? host : NULL_STR);
     ret = HAL_UDP_resolveAddress(host, p_addr->addr);
     if (0 != ret) {
         return COAP_ERROR_DNS_FAILED;
     }
-    COAP_DEBUG("The address is: %s\r\n", p_addr->addr);
+    COAP_DEBUG("The address is: %s\r\n", p_addr->addr ? p_addr->addr : NULL_STR);
 
     if (len && *q == ':') {
         p = ++q;
@@ -110,6 +111,16 @@ unsigned int CoAPUri_parse(char *p_uri, coap_address_t *p_addr,
     return COAP_SUCCESS;
 }
 
+extern int CoAPMessage_cycle(CoAPContext *context);
+static void cb_recv(int fd, void *arg)
+{
+    CoAPContext *p_ctx = (CoAPContext *)arg;
+    if (NULL == p_ctx ) {
+        COAP_ERR("Invalid paramter\r\n");
+        return ;
+    }
+    CoAPMessage_cycle(p_ctx);
+}
 
 CoAPContext *CoAPContext_create(CoAPInitParam *param)
 {
@@ -187,7 +198,10 @@ CoAPContext *CoAPContext_create(CoAPInitParam *param)
             coap_free(p_ctx);
             p_ctx    =  NULL;
         }
+    } else {
+        aos_poll_read_fd(p_ctx->network.socket_id, cb_recv, p_ctx);
     }
+
 
     return p_ctx;
 }
@@ -197,9 +211,10 @@ void CoAPContext_free(CoAPContext *p_ctx)
 {
     CoAPSendNode *cur, *next;
 
+    aos_cancel_poll_read_fd(p_ctx->network.socket_id, cb_recv, p_ctx);
     CoAPNetwork_deinit(&p_ctx->network);
 
-    list_for_each_entry_safe(cur, next, &p_ctx->list.sendlist, sendlist) {
+    list_for_each_entry_safe(cur, next, &p_ctx->list.sendlist, CoAPSendNode, sendlist) {
         if (NULL != cur) {
             if (NULL != cur->message) {
                 coap_free(cur->message);
@@ -220,9 +235,5 @@ void CoAPContext_free(CoAPContext *p_ctx)
         p_ctx->sendbuf = NULL;
     }
 
-
-    if (NULL != p_ctx) {
-        coap_free(p_ctx);
-        p_ctx    =  NULL;
-    }
+    coap_free(p_ctx);
 }

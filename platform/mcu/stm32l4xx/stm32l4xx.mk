@@ -1,20 +1,9 @@
-#
-#  UNPUBLISHED PROPRIETARY SOURCE CODE
-#  Copyright (c) 2016 MXCHIP Inc.
-#
-#  The contents of this file may not be disclosed to third parties, copied or
-#  duplicated in any form, in whole or in part, without the prior written
-#  permission of MXCHIP Corporation.
-#
-
-NAME := STM32L4xx
-
-HOST_OPENOCD := stm32f4x
-
+NAME := stm32l4xx
+HOST_OPENOCD := stm32l433
 $(NAME)_TYPE := kernel
 
 $(NAME)_COMPONENTS += platform/arch/arm/armv7m
-$(NAME)_COMPONENTS := rhino hal netmgr framework.common mbedtls cjson cli digest_algorithm
+$(NAME)_COMPONENTS += libc rhino hal vfs digest_algorithm
 
 GLOBAL_DEFINES += CONFIG_AOS_KV_MULTIPTN_MODE
 GLOBAL_DEFINES += CONFIG_AOS_KV_PTN=6
@@ -22,96 +11,140 @@ GLOBAL_DEFINES += CONFIG_AOS_KV_SECOND_PTN=7
 GLOBAL_DEFINES += CONFIG_AOS_KV_PTN_SIZE=4096
 GLOBAL_DEFINES += CONFIG_AOS_KV_BUFFER_SIZE=8192
 
-GLOBAL_INCLUDES += ../../arch/arm/armv7m/gcc/m4
-GLOBAL_INCLUDES += include \
-                   startup    \
-                   driver  \
-                   bsp/B-L475E-IOT01 \
-                   bsp/Components/es_wifi \
-                   bsp/Components/hts221 \
-                   bsp/Components/lis3mdl \
-                   bsp/Components/lps22hb \
-                   bsp/Components/lsm6dsl \
-                   bsp/Components/vl53l0x \
-                   wifi/inc
+GLOBAL_INCLUDES += \
+                   Drivers/STM32L4xx_HAL_Driver/Inc \
+                   Drivers/STM32L4xx_HAL_Driver/Inc/Legacy \
+                   Drivers/CMSIS/Include \
+                   Drivers/CMSIS/Device/ST/STM32L4xx/Include \
+                   src/$(HOST_MCU_NAME)/runapp \
+                   src/$(HOST_MCU_NAME)/hal \
+                   src/$(HOST_MCU_NAME)
+                   
+$(NAME)_SOURCES := Drivers/STM32L4xx_HAL_Driver/Src/stm32l4xx_hal.c  \
+                   Drivers/STM32L4xx_HAL_Driver/Src/stm32l4xx_hal_crc.c  \
+		   Drivers/STM32L4xx_HAL_Driver/Src/stm32l4xx_hal_crc_ex.c  \
+                   Drivers/STM32L4xx_HAL_Driver/Src/stm32l4xx_hal_flash.c  \
+                   Drivers/STM32L4xx_HAL_Driver/Src/stm32l4xx_hal_flash_ex.c \
+                   Drivers/STM32L4xx_HAL_Driver/Src/stm32l4xx_hal_flash_ramfunc.c \
+                   Drivers/STM32L4xx_HAL_Driver/Src/stm32l4xx_hal_i2c.c    \
+                   Drivers/STM32L4xx_HAL_Driver/Src/stm32l4xx_hal_i2c_ex.c \
+                   Drivers/STM32L4xx_HAL_Driver/Src/stm32l4xx_hal_pwr.c    \
+                   Drivers/STM32L4xx_HAL_Driver/Src/stm32l4xx_hal_qspi.c   \
+                   Drivers/STM32L4xx_HAL_Driver/Src/stm32l4xx_hal_rcc_ex.c \
+                   Drivers/STM32L4xx_HAL_Driver/Src/stm32l4xx_hal_rng.c    \
+                   Drivers/STM32L4xx_HAL_Driver/Src/stm32l4xx_hal_rtc.c    \
+                   Drivers/STM32L4xx_HAL_Driver/Src/stm32l4xx_hal_rtc_ex.c \
+                   Drivers/STM32L4xx_HAL_Driver/Src/stm32l4xx_hal_spi.c    \
+                   Drivers/STM32L4xx_HAL_Driver/Src/stm32l4xx_hal_spi_ex.c \
+		   Drivers/STM32L4xx_HAL_Driver/Src/stm32l4xx_hal_sai.c    \
+                   Drivers/STM32L4xx_HAL_Driver/Src/stm32l4xx_hal_rcc.c    \
+                   Drivers/STM32L4xx_HAL_Driver/Src/stm32l4xx_hal_uart.c   \
+                   Drivers/STM32L4xx_HAL_Driver/Src/stm32l4xx_hal_uart_ex.c  \
+                   Drivers/STM32L4xx_HAL_Driver/Src/stm32l4xx_hal_gpio.c   \
+                   Drivers/STM32L4xx_HAL_Driver/Src/stm32l4xx_hal_dma.c    \
+                   Drivers/STM32L4xx_HAL_Driver/Src/stm32l4xx_hal_pwr_ex.c \
+                   Drivers/STM32L4xx_HAL_Driver/Src/stm32l4xx_hal_cortex.c \
+                   Drivers/STM32L4xx_HAL_Driver/Src/stm32l4xx_hal_sd.c \
+                   Drivers/STM32L4xx_HAL_Driver/Src/stm32l4xx_hal_nor.c    \
+                   Drivers/STM32L4xx_HAL_Driver/Src/stm32l4xx_hal_nand.c    \
+                   Drivers/STM32L4xx_HAL_Driver/Src/stm32l4xx_ll_sdmmc.c    \
+                   Drivers/STM32L4xx_HAL_Driver/Src/stm32l4xx_ll_fmc.c
 
+$(NAME)_SOURCES += aos/soc_impl.c \
+                   aos/trace_impl.c
+                   
+ifeq ($(HOST_MCU_NAME), STM32L433RC-Nucleo)
+GLOBAL_CFLAGS += -DSTM32L433xx
+$(NAME)_SOURCES += src/$(HOST_MCU_NAME)/hal/hal_gpio_stm32l4.c \
+                   src/$(HOST_MCU_NAME)/hal/hal_i2c_stm32l4.c 
+else ifeq ($(HOST_MCU_NAME), STM32L432KC-Nucleo)
+GLOBAL_CFLAGS += -DSTM32L432xx 
+endif
+              
+ifeq ($(COMPILER), armcc)
+$(NAME)_SOURCES += src/STM32L433RC-Nucleo/startup_stm32l433xx_keil.s
+     
+else ifeq ($(COMPILER), iar)
+$(NAME)_SOURCES += src/STM32L433RC-Nucleo/startup_stm32l433xx_iar.s
 
-GLOBAL_CFLAGS += -DSTM32L475xx 
+else
+$(NAME)_SOURCES += src/STM32L433RC-Nucleo/startup_stm32l433xx.s
 
+endif
+     
+$(NAME)_SOURCES += src/$(HOST_MCU_NAME)/runapp/soc_init.c \
+                   src/$(HOST_MCU_NAME)/runapp/stm32l4xx_hal_msp.c \
+                   src/$(HOST_MCU_NAME)/runapp/stm32l4xx_it.c \
+                   src/$(HOST_MCU_NAME)/runapp/system_stm32l4xx.c \
+                   src/$(HOST_MCU_NAME)/runapp/aos.c  \
+                   src/$(HOST_MCU_NAME)/hal/hal_uart_stm32l4.c \
+                   src/$(HOST_MCU_NAME)/hal/hw.c \
+                   src/$(HOST_MCU_NAME)/hal/flash_l4.c \
+                   src/$(HOST_MCU_NAME)/hal/flash_port.c
+
+ifeq ($(COMPILER),armcc)
+GLOBAL_CFLAGS   += --c99 --cpu=Cortex-M4 --apcs=/hardfp --fpu=vfpv4_sp_d16 -D__MICROLIB -g --split_sections
+else ifeq ($(COMPILER),iar)
+GLOBAL_CFLAGS += --cpu=Cortex-M4 \
+                 --cpu_mode=thumb \
+                 --endian=little
+else
 GLOBAL_CFLAGS += -mcpu=cortex-m4 \
-                 -march=armv7-m \
+                 -march=armv7-m  \
+                 -mlittle-endian \
                  -mthumb -mthumb-interwork \
-                 -mlittle-endian
+                 -mfloat-abi=hard \
+                 -mfpu=fpv4-sp-d16 \
+                 -w
+GLOBAL_CFLAGS  += -D__VFP_FP__
+endif
 
-GLOBAL_CFLAGS += -w
+ifeq ($(COMPILER),armcc)
+GLOBAL_ASMFLAGS += --cpu=Cortex-M4 -g --apcs=/hardfp --fpu=vfpv4_sp_d16 --library_type=microlib --pd "__MICROLIB SETA 1"
+else ifeq ($(COMPILER),iar)
+GLOBAL_ASMFLAGS += --cpu Cortex-M4 \
+                   --cpu_mode thumb \
+                   --endian little
+else
+GLOBAL_ASMFLAGS += -mcpu=cortex-m4 \
+                   -mlittle-endian \
+                   -mthumb \
+                   -mfloat-abi=hard \
+                   -mfpu=fpv4-sp-d16 \
+                   -w
+endif
 
-GLOBAL_LDFLAGS += -march=armv5te  \
-                  -mcpu=cortex-m4        \
+ifeq ($(COMPILER),armcc)
+GLOBAL_LDFLAGS += -L --cpu=Cortex-M4   \
+                  -L --fpu=vfpv4_sp_d16 \
+                  -L --apcs=/hardfp \
+                  -L --strict \
+                  -L --xref -L --callgraph -L --symbols \
+                  -L --info=sizes -L --info=totals -L --info=unused -L --info=veneers -L --info=summarysizes
+else ifeq ($(COMPILER),iar)
+GLOBAL_LDFLAGS += --silent --cpu=Cortex-M4.vfp
+
+else
+GLOBAL_LDFLAGS += -mcpu=cortex-m4  \
+                  -mlittle-endian  \
                   -mthumb -mthumb-interwork \
-                  -mlittle-endian \
-                  -nostartfiles \
                   --specs=nosys.specs \
+                  -mfloat-abi=hard \
+                  -mfpu=fpv4-sp-d16 \
                   $(CLIB_LDFLAGS_NANO_FLOAT)
+endif
 
-$(NAME)_CFLAGS  += -Wall -Werror -Wno-unused-variable -Wno-unused-parameter -Wno-implicit-function-declaration
-$(NAME)_CFLAGS  += -Wno-type-limits -Wno-sign-compare -Wno-pointer-sign -Wno-uninitialized
-$(NAME)_CFLAGS  += -Wno-return-type -Wno-unused-function -Wno-unused-but-set-variable
-$(NAME)_CFLAGS  += -Wno-unused-value -Wno-strict-aliasing
+ifeq ($(COMPILER),armcc)
+GLOBAL_LDFLAGS += -L --scatter=platform/mcu/stm32l4xx/src/STM32L433RC-Nucleo/STM32L433.sct
+else ifeq ($(COMPILER),iar)
+GLOBAL_LDFLAGS += --config platform/mcu/stm32l4xx/src/STM32L433RC-Nucleo/STM32L433.icf
+else
+GLOBAL_LDFLAGS += -T platform/mcu/stm32l4xx/src/STM32L433RC-Nucleo/STM32L433.ld
+endif
 
-GLOBAL_LDFLAGS += -T platform/mcu/stm32l4xx/STM32L475VGTx_FLASH.ld
 
-$(NAME)_SOURCES := startup/startup_stm32l475xx.s \
-                   startup/stm32l4xx_hal_msp.c      \
-                   startup/stm32l4xx_it.c           \
-                   startup/soc_init.c          \
-                   cmsis/system_stm32l4xx.c      \
-                   driver/stm32l4xx_hal.c        \
-                   driver/flash_l4.c  \
-                   driver/stm32l4xx_hal_flash.c  \
-                   driver/stm32l4xx_hal_flash_ex.c \
-                   driver/stm32l4xx_hal_flash_ramfunc.c \
-                   driver/stm32l4xx_hal_i2c.c    \
-                   driver/stm32l4xx_hal_i2c_ex.c \
-                   driver/stm32l4xx_hal_pwr.c    \
-                   driver/stm32l4xx_hal_qspi.c   \
-                   driver/stm32l4xx_hal_rcc_ex.c \
-                   driver/stm32l4xx_hal_rng.c    \
-                   driver/stm32l4xx_hal_rtc.c    \
-                   driver/stm32l4xx_hal_rtc_ex.c \
-                   driver/stm32l4xx_hal_spi.c    \
-                   driver/stm32l4xx_hal_spi_ex.c \
-                   driver/stm32l4xx_hal_rcc.c    \
-                   driver/stm32l4xx_hal_uart.c   \
-                   driver/stm32l4xx_hal_uart_ex.c  \
-                   driver/stm32l4xx_hal_gpio.c   \
-                   driver/stm32l4xx_hal_dma.c    \
-                   driver/stm32l4xx_hal_pwr_ex.c \
-                   driver/stm32l4xx_hal_cortex.c \
-                   bsp/B-L475E-IOT01/stm32l475e_iot01_accelero.c \
-                   bsp/B-L475E-IOT01/stm32l475e_iot01_gyro.c \
-                   bsp/B-L475E-IOT01/stm32l475e_iot01_hsensor.c \
-                   bsp/B-L475E-IOT01/stm32l475e_iot01_magneto.c \
-                   bsp/B-L475E-IOT01/stm32l475e_iot01_psensor.c \
-                   bsp/B-L475E-IOT01/stm32l475e_iot01_tsensor.c \
-                   bsp/B-L475E-IOT01/stm32l475e_iot01.c \
-                   bsp/Components/es_wifi/es_wifi.c \
-                   bsp/Components/hts221/hts221.c \
-                   bsp/Components/lis3mdl/lis3mdl.c \
-                   bsp/Components/lps22hb/lps22hb.c \
-                   bsp/Components/lsm6dsl/lsm6dsl.c \
-                   bsp/Components/vl53l0x/vl53l0x_api.c \
-                   bsp/Components/vl53l0x/vl53l0x_api_calibration.c \
-                   bsp/Components/vl53l0x/vl53l0x_api_core.c \
-                   bsp/Components/vl53l0x/vl53l0x_api_ranging.c \
-                   bsp/Components/vl53l0x/vl53l0x_api_strings.c \
-                   bsp/Components/vl53l0x/vl53l0x_platform_log.c \
-                   aos/soc_impl.c                \
-                   aos/aos.c                    \
-                   wifi/src/es_wifi_io.c        \
-                   wifi/src/wifi.c              \
-                   hal/hw.c                     \
-                   hal/wifi_port.c              \
-                   hal/flash_port.c              \
-                   hal/ota_port.c              \
-                   ../../arch/arm/armv7m/gcc/m4/port_c.c \
-                   ../../arch/arm/armv7m/gcc/m4/port_s.S
+ifeq ($(COMPILER),armcc)
+$(NAME)_LINK_FILES := src/STM32L433RC-Nucleo/startup_stm32l433xx_keil.o
+$(NAME)_LINK_FILES += src/$(HOST_MCU_NAME)/runapp/stm32l4xx_it.o
+$(NAME)_LINK_FILES += src/$(HOST_MCU_NAME)/runapp/stm32l4xx_hal_msp.o
+endif

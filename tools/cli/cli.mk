@@ -1,9 +1,15 @@
 NAME := cli
 
 $(NAME)_TYPE := kernel
+$(NAME)_MBINS_TYPE := kernel
 
 $(NAME)_SOURCES := cli.c dumpsys.c
-$(NAME)_CFLAGS  += -Wall -Werror -Wno-unused-variable -Wno-unused-parameter -Wno-implicit-function-declaration 
+
+ifeq ($(COMPILER),armcc)
+else ifeq ($(COMPILER),iar)
+else
+$(NAME)_CFLAGS  += -Wall -Werror
+endif
 
 $(NAME)_COMPONENTS += hal
 

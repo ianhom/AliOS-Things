@@ -6,18 +6,15 @@ $(NAME)_SOURCES     := main.c
 $(NAME)_COMPONENTS  += protocols.mesh cli netmgr
 GLOBAL_DEFINES      += TAPIF_DEFAULT_OFF DEBUG
 
+ifeq ($(MESHAUTH), 1)
+$(NAME)_COMPONENTS  += base64 digest_algorithm tfs libid2 libkm alicrypto
+endif
+
 LWIP ?=1
 ifeq ($(LWIP), 1)
 $(NAME)_COMPONENTS  += protocols.net
 endif
 
-ifneq (,${BINS})
-GLOBAL_CFLAGS += -DSYSINFO_OS_BINS
-endif
-CURRENT_TIME = $(shell /bin/date +%Y%m%d.%H%M)
-CONFIG_SYSINFO_APP_VERSION = APP-1.0.0-$(CURRENT_TIME)
-$(info app_version:${CONFIG_SYSINFO_APP_VERSION})
-GLOBAL_CFLAGS += -DSYSINFO_APP_VERSION=\"$(CONFIG_SYSINFO_APP_VERSION)\"
 
 ifeq ($(ipv6),0)
 GLOBAL_DEFINES += LWIP_IPV6=0
@@ -34,4 +31,12 @@ endif
 ifeq ($(DDA),1)
 GLOBAL_LDFLAGS += -lreadline -lncurses
 $(NAME)_COMPONENTS  += dda
+endif
+
+ifneq (,$(filter EMW3060,$(MODULE)))
+GLOBAL_DEFINES += MESHAPP_LIGHT_ENABLED
+endif
+
+ifeq ($(mesh_hal_test),1)
+GLOBAL_DEFINES += MESH_HAL_TEST_ENABLED
 endif

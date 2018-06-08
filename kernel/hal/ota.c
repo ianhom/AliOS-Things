@@ -17,7 +17,6 @@ void hal_ota_register_module(hal_ota_module_t *module)
     ota_module = module;
 }
 
-
 hal_stat_t hal_ota_init(void *something)
 {
     return ota_module->init(ota_module, something);

@@ -26,7 +26,7 @@ void krhino_task_create_hook(ktask_t *task);
  * This function will provide task delete hook
  * @param[in]  task  pointer to the task
  */
-void krhino_task_del_hook(ktask_t *task);
+void krhino_task_del_hook(ktask_t *task, res_free_t *arg);
 
 /**
  * This function will provide task abort hook
@@ -48,6 +48,11 @@ void krhino_tick_hook(void);
  * This function will provide idle hook
  */
 void krhino_idle_hook(void);
+
+/**
+ * This function will provide idle pre hook
+ */
+void krhino_idle_pre_hook(void);
 
 /**
  * This function will provide  krhino_mm_alloc hook

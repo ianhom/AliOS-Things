@@ -1,11 +1,3 @@
-ifneq (,${BINS})
-	GLOBAL_CFLAGS += -DSYSINFO_OS_BINS
-endif
-CURRENT_TIME = $(shell /bin/date +%Y%m%d.%H%M)
-CONFIG_SYSINFO_APP_VERSION = APP-1.0.0-$(CURRENT_TIME)
-$(info app_version:${CONFIG_SYSINFO_APP_VERSION})
-	GLOBAL_CFLAGS += -DSYSINFO_APP_VERSION=\"$(CONFIG_SYSINFO_APP_VERSION)\"
-
 NAME := coapapp
 
 $(NAME)_SOURCES     := coapapp.c
@@ -21,6 +13,9 @@ ifeq ($(CONFIG_COAP_ONLINE), y)
 $(NAME)_DEFINES += COAP_ONLINE
 endif
 
+ifneq ($(FOTA_DL_COAP),)
+GLOBAL_DEFINES      += FOTA_DOWNLOAD_COAP
+endif
 
 $(NAME)_COMPONENTS  := cli
 #ifeq ($(LWIP),1)

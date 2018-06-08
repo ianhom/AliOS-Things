@@ -5,6 +5,18 @@
 #ifndef K_DEFAULT_CONFIG_H
 #define K_DEFAULT_CONFIG_H
 
+#ifndef RHINO_CONFIG_CPU_PWR_MGMT
+#define RHINO_CONFIG_CPU_PWR_MGMT            0
+#endif
+
+#ifndef RHINO_CONFIG_CPU_PWR_MGMT
+#define RHINO_SCHED_NONE_PREEMPT             0
+#endif
+
+#ifndef RHINO_CONFIG_STK_CHK_WORDS
+#define RHINO_CONFIG_STK_CHK_WORDS           1u
+#endif
+
 /* chip level conf */
 #ifndef RHINO_CONFIG_LITTLE_ENDIAN
 #define RHINO_CONFIG_LITTLE_ENDIAN           1
@@ -40,7 +52,7 @@
 #endif
 
 #ifndef RHINO_CONFIG_WORKQUEUE_TASK_PRIO
-#define RHINO_CONFIG_WORKQUEUE_TASK_PRIO     9
+#define RHINO_CONFIG_WORKQUEUE_TASK_PRIO     20
 #endif
 
 #ifndef RHINO_CONFIG_EVENT_FLAG
@@ -56,11 +68,39 @@
 #endif
 
 #ifndef RHINO_CONFIG_MM_BLK
-#define RHINO_CONFIG_MM_BLK                  0
+#define RHINO_CONFIG_MM_BLK                  1
 #endif
 
-#ifndef RHINO_CONFIG_MM_BYTE
-#define RHINO_CONFIG_MM_BYTE                 0
+#ifndef RHINO_CONFIG_MM_BLK_SIZE
+#define RHINO_CONFIG_MM_BLK_SIZE             32
+#endif
+
+#ifndef RHINO_CONFIG_MM_TLF
+#define RHINO_CONFIG_MM_TLF                  1
+#endif
+
+#ifndef RHINO_CONFIG_MM_MAXMSIZEBIT
+#define RHINO_CONFIG_MM_MAXMSIZEBIT          20
+#endif
+
+#ifndef RHINO_CONFIG_MM_TLF_BLK_SIZE
+#define RHINO_CONFIG_MM_TLF_BLK_SIZE         8192
+#endif
+
+#ifndef RHINO_CONFIG_MM_DEBUG
+#define RHINO_CONFIG_MM_DEBUG                0
+#endif
+
+#ifndef RHINO_CONFIG_GCC_RETADDR
+#define RHINO_CONFIG_GCC_RETADDR             0
+#endif
+
+#ifndef RHINO_CONFIG_MM_LEAKCHECK
+#define RHINO_CONFIG_MM_LEAKCHECK            0
+#endif
+
+#ifndef K_MM_STATISTIC
+#define K_MM_STATISTIC                       1
 #endif
 
 #ifndef RHINO_CONFIG_TASK_SEM
@@ -68,8 +108,8 @@
 #endif
 
 /* kernel task conf */
-#ifndef RHINO_CONFIG_TASK_SUSPEND
-#define RHINO_CONFIG_TASK_SUSPEND            0
+#ifndef RHINO_CONFIG_TASK_PRI_CHG
+#define RHINO_CONFIG_TASK_PRI_CHG            1
 #endif
 
 #ifndef RHINO_CONFIG_TASK_INFO
@@ -84,12 +124,16 @@
 #define RHINO_CONFIG_TASK_DEL                0
 #endif
 
+#ifndef RHINO_CONFIG_TASK_STACK_CUR_CHECK
+#define RHINO_CONFIG_TASK_STACK_CUR_CHECK    0
+#endif
+
 #ifndef RHINO_CONFIG_TASK_WAIT_ABORT
 #define RHINO_CONFIG_TASK_WAIT_ABORT         0
 #endif
 
 #ifndef RHINO_CONFIG_SCHED_RR
-#define RHINO_CONFIG_SCHED_RR                1
+#define RHINO_CONFIG_SCHED_RR                0
 #endif
 
 #ifndef RHINO_CONFIG_TIME_SLICE_DEFAULT
@@ -104,6 +148,10 @@
 #define RHINO_CONFIG_USER_PRI_MAX            (RHINO_CONFIG_PRI_MAX - 2)
 #endif
 
+#ifndef RHINO_CONFIG_RINGBUF_VENDOR
+#define RHINO_CONFIG_RINGBUF_VENDOR          0
+#endif
+
 /* kernel mm_region conf */
 #ifndef RHINO_CONFIG_MM_REGION_MUTEX
 #define RHINO_CONFIG_MM_REGION_MUTEX         1
@@ -114,33 +162,8 @@
 #define RHINO_CONFIG_HW_COUNT                0
 #endif
 
-#ifndef RHINO_CONFIG_TICK_TASK
-#define RHINO_CONFIG_TICK_TASK               0
-#endif
-
-#if (RHINO_CONFIG_TICK_TASK > 0)
-
-#ifndef RHINO_CONFIG_TICK_TASK_STACK_SIZE
-#define RHINO_CONFIG_TICK_TASK_STACK_SIZE    256
-#endif
-
-#ifndef RHINO_CONFIG_TICK_TASK_PRI
-#define RHINO_CONFIG_TICK_TASK_PRI           1
-#endif
-
-#endif /* RHINO_CONFIG_TICK_TASK */
-
-#ifndef RHINO_CONFIG_DYNTICKLESS
-#define RHINO_CONFIG_DYNTICKLESS             0
-#endif
-
 #ifndef RHINO_CONFIG_TICKS_PER_SECOND
 #define RHINO_CONFIG_TICKS_PER_SECOND        100
-#endif
-
-/*Must be 2^n size!, such as 1, 2, 4, 8, 16,32, etc.......*/
-#ifndef RHINO_CONFIG_TICK_HEAD_ARRAY
-#define RHINO_CONFIG_TICK_HEAD_ARRAY         8
 #endif
 
 #ifndef RHINO_CONFIG_TIMER_TASK_STACK_SIZE
@@ -153,6 +176,10 @@
 
 #ifndef RHINO_CONFIG_TIMER_TASK_PRI
 #define RHINO_CONFIG_TIMER_TASK_PRI          5
+#endif
+
+#ifndef RHINO_CONFIG_TIMER_MSG_NUM
+#define RHINO_CONFIG_TIMER_MSG_NUM           20
 #endif
 
 /* kernel intrpt conf */
@@ -175,10 +202,6 @@
 
 #ifndef RHINO_CONFIG_TASK_STACK_OVF_CHECK
 #define RHINO_CONFIG_TASK_STACK_OVF_CHECK    0
-#endif
-
-#ifndef RHINO_CONFIG_STACK_OVF_CHECK_HW
-#define RHINO_CONFIG_STACK_OVF_CHECK_HW      0
 #endif
 
 /* kernel dyn alloc conf */
@@ -250,12 +273,16 @@
 #define RHINO_CONFIG_CPU_NUM                 1
 #endif
 
-#if ((RHINO_CONFIG_DYNTICKLESS >= 1) && (RHINO_CONFIG_SCHED_RR != 0))
-#error  "RHINO_CONFIG_SCHED_RR should be 0 when RHINO_CONFIG_DYNTICKLESS is enabled."
+#if ((RHINO_CONFIG_TIMER >= 1) && (RHINO_CONFIG_BUF_QUEUE == 0))
+#error  "RHINO_CONFIG_BUF_QUEUE should be 1 when RHINO_CONFIG_TIMER is enabled."
 #endif
 
-#if ((RHINO_CONFIG_DYNTICKLESS >= 1) && (RHINO_CONFIG_TICK_HEAD_ARRAY != 1))
-#error  "RHINO_CONFIG_TICK_HEAD_ARRAY must be 1 when RHINO_CONFIG_DYNTICKLESS is enabled."
+#if ((RHINO_CONFIG_MM_TLF >= 1) && (RHINO_CONFIG_MM_BLK == 0))
+#error  "RHINO_CONFIG_MM_BLK should be 1 when RHINO_CONFIG_MM_TLF is enabled."
+#endif
+
+#if ((RHINO_CONFIG_KOBJ_DYN_ALLOC >= 1) && (RHINO_CONFIG_MM_TLF == 0))
+#error  "RHINO_CONFIG_MM_TLF should be 1 when RHINO_CONFIG_KOBJ_DYN_ALLOC is enabled."
 #endif
 
 #if (RHINO_CONFIG_PRI_MAX >= 256)

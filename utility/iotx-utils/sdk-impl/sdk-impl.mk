@@ -2,11 +2,14 @@ NAME := libsdk-impl
 
 $(NAME)_SOURCES     := sdk-impl.c
 
+ifeq ($(COMPILER),armcc)
+else ifeq ($(COMPILER),iar)
+else
 $(NAME)_CFLAGS += \
     -Wno-unused-function \
     -Wno-implicit-function-declaration \
-    -Wno-unused-function \
-#    -Werror
+    -Wno-unused-function 
+endif
 
 $(NAME)_INCLUDES    := \
     ./ \
@@ -15,6 +18,6 @@ $(NAME)_INCLUDES    := \
     ../LITE-utils \
     ../LITE-log \
     ../guider \
-    ../device
+    ../iotx-system
 
 $(NAME)_COMPONENTS  += iotx-utils.guider

@@ -14,9 +14,6 @@ kstat_t mutex_create(kmutex_t *mutex, const name_t *name, uint8_t mm_alloc_flag)
     /* init the list */
     klist_init(&mutex->blk_obj.blk_list);
     mutex->blk_obj.blk_policy = BLK_POLICY_PRI;
-#if (RHINO_CONFIG_KOBJ_SET > 0)
-    mutex->blk_obj.handle = NULL;
-#endif
     mutex->blk_obj.name       = name;
     mutex->mutex_task         = NULL;
     mutex->mutex_list         = NULL;
@@ -295,7 +292,7 @@ kstat_t krhino_mutex_lock(kmutex_t *mutex, tick_t ticks)
 
     /* if the same task get the same mutex again, it causes mutex owner nested */
     if (g_active_task[cur_cpu_num] == mutex->mutex_task) {
-        if (mutex->owner_nested == (mutex_nested_t) - 1) {
+        if (mutex->owner_nested == (mutex_nested_t)-1) {
             /* fatal error here, system must be stoped here */
             k_err_proc(RHINO_MUTEX_NESTED_OVF);
             RHINO_CRITICAL_EXIT();
@@ -352,16 +349,13 @@ kstat_t krhino_mutex_lock(kmutex_t *mutex, tick_t ticks)
 
     RHINO_CRITICAL_EXIT_SCHED();
 
-#ifndef RHINO_CONFIG_PERF_NO_PENDEND_PROC
     RHINO_CPU_INTRPT_DISABLE();
 
     /* so the task is waked up, need know which reason cause wake up */
     ret = pend_state_end_proc(g_active_task[cpu_cur_get()]);
 
     RHINO_CPU_INTRPT_ENABLE();
-#else
-    ret = RHINO_SUCCESS;
-#endif
+
     return ret;
 }
 
@@ -433,17 +427,6 @@ kstat_t krhino_mutex_unlock(kmutex_t *mutex)
     mutex->owner_nested = 1u;
 
     RHINO_CRITICAL_EXIT_SCHED();
-
-    return RHINO_SUCCESS;
-}
-
-kstat_t krhino_mutex_is_valid(kmutex_t *mutex)
-{
-    NULL_PARA_CHK(mutex);
-
-    if (mutex->blk_obj.obj_type != RHINO_MUTEX_OBJ_TYPE) {
-        return RHINO_KOBJ_TYPE_ERR;
-    }
 
     return RHINO_SUCCESS;
 }

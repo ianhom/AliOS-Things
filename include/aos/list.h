@@ -15,10 +15,7 @@ extern "C" {
  * @param[in]   type     the type of the struct this is embedded in.
  * @param[in]   member   the name of the variable within the struct.
  */
-#define aos_offsetof(type, member) ({ \
-    type tmp;                         \
-    (long)(&tmp.member) - (long)&tmp; \
-})
+#define aos_offsetof(type, member)   ((size_t)&(((type *)0)->member))
 
 /*
  * Get the struct for this entry.
@@ -52,9 +49,9 @@ static inline void __dlist_add(dlist_t *node, dlist_t *prev, dlist_t *next)
  * @param[in]   type    the type of the struct this is embedded in.
  * @param[in]   member  the name of the dlist_t within the struct.
  */
-#define dlist_entry(addr, type, member) ({             \
-    (type *)((long)addr - aos_offsetof(type, member)); \
-})
+#define dlist_entry(addr, type, member) \
+    ((type *)((long)addr - aos_offsetof(type, member)))
+
 
 static inline void dlist_add(dlist_t *node, dlist_t *queue)
 {
@@ -185,12 +182,17 @@ static inline int dlist_empty(const dlist_t *head)
  *
  * @param[in]  queue  the head for your list.
  */
-#define dlist_entry_number(queue) ({                     \
-    int num;                                             \
-    dlist_t *cur = queue;                                \
-    for (num=0;cur->next != queue;cur=cur->next, num++); \
-    num;                                                 \
-})
+static inline int dlist_entry_number(dlist_t *queue)
+{
+	int num;
+	dlist_t *cur = queue;  
+	for (num=0;cur->next != queue;cur=cur->next, num++)
+		;
+	
+	return num; 
+}
+
+
 
 /*
  * Initialise the list.
@@ -282,7 +284,7 @@ static inline void slist_init(slist_t *head)
  *
  * @param[in]   name    the list to be initialized.
  */
-#define AOS_SLIST_HEAD_INIT(name) { }
+#define AOS_SLIST_HEAD_INIT(name) {0}
 
 /*
  * Initialise the list.
@@ -298,9 +300,9 @@ static inline void slist_init(slist_t *head)
  * @param[in]   type     the type of the struct this is embedded in.
  * @param[in]   member   the name of the slist_t within the struct.
  */
-#define slist_entry(addr, type, member) ({                                   \
-    addr ? (type *)((long)addr - aos_offsetof(type, member)) : (type *)addr; \
-})
+#define slist_entry(addr, type, member) (                                   \
+    addr ? (type *)((long)addr - aos_offsetof(type, member)) : (type *)addr \
+)
 
 /*
 * Get the first element from a list.
@@ -317,12 +319,16 @@ static inline void slist_init(slist_t *head)
  *
  * @param[in]   queue    the head for your list.
  */
-#define slist_entry_number(queue) ({            \
-    int num;                                    \
-    slist_t *cur = queue;                       \
-    for (num=0;cur->next;cur=cur->next, num++); \
-    num;                                        \
-})
+static inline int slist_entry_number(slist_t *queue)
+{
+	int num;
+    slist_t *cur = queue;  
+    for (num=0;cur->next;cur=cur->next, num++)
+		;
+	
+    return num; 
+}
+
 
 #ifdef __cplusplus
 }

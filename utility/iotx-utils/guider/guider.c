@@ -223,6 +223,7 @@ static int _http_response(char *payload,
                           const char *request_string,
                           const char *url,
                           const int port_num,
+                          httpclient_t *phttpc,
                           const char *pkey
                          )
 {
@@ -234,13 +235,12 @@ static int _http_response(char *payload,
     char                   *requ_payload = NULL;
     char                   *resp_payload = NULL;
 
-    httpclient_t            httpc;
     httpclient_data_t       httpc_data;
 
-    memset(&httpc, 0, sizeof(httpclient_t));
+    memset(phttpc, 0, sizeof(httpclient_t));
     memset(&httpc_data, 0, sizeof(httpclient_data_t));
 
-    httpc.header = "Accept: text/xml,text/javascript,text/html,application/json\r\n";
+    phttpc->header = "Accept: text/xml,text/javascript,text/html,application/json\r\n";
 
     requ_payload = (char *)LITE_malloc(HTTP_POST_MAX_LEN);
     if (NULL == requ_payload) {
@@ -269,7 +269,7 @@ static int _http_response(char *payload,
     httpc_data.response_buf = resp_payload;
     httpc_data.response_buf_len = HTTP_RESP_MAX_LEN;
 
-    ret = httpclient_common(&httpc,
+    ret = httpclient_common(phttpc,
                             url,
                             port_num,
                             pkey,
@@ -302,6 +302,7 @@ static int _iotId_iotToken_http(
             char *iot_id,
             char *iot_token,
             char *host,
+            httpclient_t *phttpc,
             uint16_t *pport)
 {
     char                iotx_payload[512] = {0};
@@ -361,6 +362,7 @@ static int _iotId_iotToken_http(
                    request_string,
                    guider_addr,
                    iotx_port,
+                   phttpc,
 #if defined(MQTT_ID2_AUTH) && defined(TEST_ID2_DAILY)
                    NULL
 #elif defined(TEST_OTA_PRE)
@@ -544,7 +546,7 @@ static void _timestamp_string(char *buf, int len)
 
 static SECURE_MODE _secure_mode_num(void)
 {
-    int             rc = -1;
+    SECURE_MODE rc = MODE_TLS_GUIDER;
 
 #ifdef MQTT_DIRECT
 
@@ -637,6 +639,7 @@ static char *_authenticate_string(char sign[], char ts[]
 #endif
                                  )
 {
+    char                   buffer[1024];
     char                   *ret = NULL;
     iotx_device_info_pt     dev = NULL;
     int                     rc = -1;
@@ -645,7 +648,7 @@ static char *_authenticate_string(char sign[], char ts[]
     assert(dev);
 
 #ifdef MQTT_ID2_AUTH
-    rc = asprintf(&ret,
+    rc = sprintf(buffer,
                   "id2=%s&" "sign=%s&"
 #ifdef IOTX_WITHOUT_TLS
                   "deviceCode=%s&"
@@ -657,7 +660,7 @@ static char *_authenticate_string(char sign[], char ts[]
 #endif
                   ts, dev->device_id);
 #else
-    rc = asprintf(&ret,
+    rc = sprintf(buffer,
                   "productKey=%s&" "deviceName=%s&" "signmethod=%s&" "sign=%s&"
                   "version=default&" "clientId=%s&" "timestamp=%s&" "resources=mqtt"
                   , dev->product_key
@@ -672,6 +675,10 @@ static char *_authenticate_string(char sign[], char ts[]
                   , ts);
 #endif
     assert(rc < 1024);
+    ret = (char *)malloc(rc + 1);
+    assert(ret != NULL);
+    memcpy(ret, buffer, rc);
+    ret[rc] = 0;
 
     return ret;
 }
@@ -711,7 +718,7 @@ int iotx_guider_authenticate(void)
 {
     char                guider_pid_buf[GUIDER_PID_LEN + 16] = {0};
     char                guider_url[GUIDER_URL_LEN] = {0};
-    SECURE_MODE         guider_secmode_num = 0;
+    SECURE_MODE         guider_secmode_num = MODE_TCP_GUIDER_PLAIN;
     char                guider_secmode_str[CONN_SECMODE_LEN] = {0};
     char                guider_sign[GUIDER_SIGN_LEN] = {0};
     char                guider_timestamp_str[GUIDER_TS_LEN] = {0};
@@ -723,6 +730,7 @@ int iotx_guider_authenticate(void)
     iotx_device_info_pt dev = iotx_device_info_get();
     iotx_conn_info_pt   usr = iotx_conn_info_get();
     char               *req_str = NULL;
+    httpclient_t       httpc;
 
     assert(dev);
     assert(usr);
@@ -790,12 +798,14 @@ int iotx_guider_authenticate(void)
                                   iotx_id,
                                   iotx_token,
                                   iotx_conn_host,
+                                  &httpc,
                                   &iotx_conn_port)) {
         if (req_str) {
             free(req_str);
         }
 
         log_err("_iotId_iotToken_http() failed");
+        httpclient_close(&httpc);
 #ifdef MQTT_ID2_AUTH
         LITE_free(guider_id2);
         LITE_free(guider_device_code);

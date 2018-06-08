@@ -4,6 +4,8 @@
 
 #include <k_api.h>
 #include <assert.h>
+#include <stdio.h>
+#include <sys/time.h>
 
 #if (RHINO_CONFIG_HW_COUNT > 0)
 void soc_hw_timer_init(void)
@@ -41,26 +43,27 @@ void soc_intrpt_stack_ovf_check(void)
 }
 #endif
 
-#if (RHINO_CONFIG_DYNTICKLESS > 0)
-void soc_tick_interrupt_set(tick_t next_ticks,tick_t elapsed_ticks)
-{
-}
+#if (RHINO_CONFIG_MM_TLF > 0)
 
-tick_t soc_elapsed_ticks_get(void)
-{
-    return 0;
-}
-#endif
-
+#if defined (__CC_ARM) /* Keil / armcc */
+extern unsigned int Image$$ARM_LIB_HEAP$$Base;
+extern unsigned int Image$$ARM_LIB_HEAP$$ZI$$Length; 
+k_mm_region_t g_mm_region[] = {{(uint8_t *)&Image$$ARM_LIB_HEAP$$Base, (size_t)&Image$$ARM_LIB_HEAP$$ZI$$Length}};
+#elif defined (__ICCARM__)/* IAR */
+#define HEAP_BUFFER_SIZE 1024*20
+uint8_t g_heap_buf[HEAP_BUFFER_SIZE];
+k_mm_region_t g_mm_region[] = {{g_heap_buf, HEAP_BUFFER_SIZE}};
+#else /* GCC */
 extern void         *heap_start;
 extern void         *heap_end;
 extern void         *heap_len;
+/* heap_start and heap_len is set by linkscript(*.ld) */
+k_mm_region_t g_mm_region[] = {{(uint8_t*)&heap_start,(size_t)&heap_len}};
+#endif
 
-extern void         *heap2_start;
-extern void         *heap2_len;
-
-k_mm_region_t g_mm_region[] = {{(uint8_t*)&heap_start,(size_t)&heap_len},{(uint8_t*)&heap2_start,(size_t)&heap2_len}};
 int           g_region_num  = sizeof(g_mm_region)/sizeof(k_mm_region_t);
+
+#endif
 
 #if (RHINO_CONFIG_MM_LEAKCHECK > 0 )
 
@@ -74,27 +77,28 @@ void aos_mm_leak_region_init(void)
 #endif
 }
 
+#endif
+
+
+#if (RHINO_CONFIG_TASK_STACK_CUR_CHECK > 0)
 size_t soc_get_cur_sp()
 {
     size_t sp = 0;
+#if defined (__GNUC__)&&!defined(__CC_ARM)
     asm volatile(
         "mov %0,sp\n"
         :"=r"(sp));
+#endif
     return sp;
 }
-
-#endif
 static void soc_print_stack()
 {
-
-    uint32_t offset = 0;
-    kstat_t  rst    = RHINO_SUCCESS;
     void    *cur, *end;
     int      i=0;
     int     *p;
 
     end   = krhino_cur_task_get()->task_stack_base + krhino_cur_task_get()->stack_size;
-    cur = soc_get_cur_sp();
+    cur = (void *)soc_get_cur_sp();
     p = (int*)cur;
     while(p < (int*)end) {
         if(i%4==0) {
@@ -107,10 +111,15 @@ static void soc_print_stack()
     printf("\r\n");
     return;
 }
+#endif
+
 void soc_err_proc(kstat_t err)
 {
     (void)err;
+    
+    #if (RHINO_CONFIG_TASK_STACK_CUR_CHECK > 0)
     soc_print_stack();
+    #endif
     assert(0);
 }
 

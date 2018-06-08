@@ -14,12 +14,7 @@ extern "C"
 #endif
 
 #define MAX_SSID_SIZE  32
-#define MAX_BSSID_SIZE 20
 #define MAX_PWD_SIZE   64
-
-#ifdef STM32L475xx
-#define MAX_SECURITY_SIZE  16
-#endif
 
 #ifndef MAX_SSID_LEN
 #define MAX_SSID_LEN (MAX_SSID_SIZE+1)
@@ -33,11 +28,8 @@ extern "C"
 /* 1 bigger than actual size for holding \0 */
 typedef struct {
     char ssid[MAX_SSID_SIZE + 1];
-    char bssid[MAX_BSSID_SIZE + 1];
+    uint8_t bssid[ETH_ALEN];
     char pwd[MAX_PWD_SIZE + 1];
-#ifdef STM32L475xx
-    char security[MAX_SECURITY_SIZE + 1];
-#endif
 } netmgr_ap_config_t;
 
 typedef struct autoconfig_plugin_s {
@@ -88,9 +80,10 @@ int  netmgr_get_ap_config(netmgr_ap_config_t *config);
 void netmgr_clear_ap_config(void);
 void netmgr_set_smart_config(autoconfig_plugin_t *plugin);
 void netmgr_register_wifi_scan_result_callback(netmgr_wifi_scan_result_cb_t cb);
-bool netmgr_get_scan_cb_finished();
-bool netmgr_get_ip_state();
-void netmgr_reconnect_wifi();
+bool netmgr_get_scan_cb_finished(void);
+bool netmgr_get_ip_state(void);
+void netmgr_reconnect_wifi(void);
+void netmgr_wifi_get_ip(char *ip);
 
 int netmgr_init(void);
 void netmgr_deinit(void);

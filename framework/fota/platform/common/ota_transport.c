@@ -39,7 +39,7 @@ int8_t platform_ota_publish_request(ota_request_params *request_parmas)
     return 0;
 }
 
-char *platform_ota_get_id()
+const char *platform_ota_get_id()
 {
     return 0;
 }
@@ -51,5 +51,9 @@ int8_t platform_ota_status_post(int status, int percent)
 
 int8_t platform_ota_result_post(void)
 {
+    return 0;
+}
+
+int8_t platform_destroy_connect(void){
     return 0;
 }

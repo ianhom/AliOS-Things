@@ -7,29 +7,45 @@
 #if (RHINO_CONFIG_KOBJ_DYN_ALLOC > 0)
 void dyn_mem_proc_task(void *arg)
 {
-    void   *recv_msg;
-    kstat_t ret;
+    CPSR_ALLOC();
+
+    size_t      i;
+    kstat_t     ret;
+    res_free_t *res_free;
+    res_free_t  tmp;
 
     (void)arg;
 
     while (1) {
-        ret = krhino_queue_recv(&g_dyn_queue, RHINO_WAIT_FOREVER, &recv_msg);
+        ret = krhino_sem_take(&g_res_sem, RHINO_WAIT_FOREVER);
         if (ret != RHINO_SUCCESS) {
             k_err_proc(RHINO_DYN_MEM_PROC_ERR);
         }
 
-        krhino_mm_free(recv_msg);
+        while (1) {
+            RHINO_CRITICAL_ENTER();
+            if (!is_klist_empty(&g_res_list)) {
+                res_free = krhino_list_entry(g_res_list.next, res_free_t, res_list);
+                klist_rm(&res_free->res_list);
+                RHINO_CRITICAL_EXIT();
+                memcpy(&tmp, res_free, sizeof(res_free_t));
+                for (i = 0; i < tmp.cnt; i++) {
+                    krhino_mm_free(tmp.res[i]);
+                }
+            }
+            else {
+                RHINO_CRITICAL_EXIT();
+                break;
+            }
+        }
     }
 }
 
 void dyn_mem_proc_task_start(void)
 {
-    ktask_t *dyn_mem_task;
-
-    krhino_task_dyn_create(&dyn_mem_task, "dyn_mem_proc_task", 0,
-                           RHINO_CONFIG_K_DYN_MEM_TASK_PRI,
-                           0, RHINO_CONFIG_K_DYN_TASK_STACK, dyn_mem_proc_task, 1);
-
+    krhino_task_create(&g_dyn_task, "dyn_mem_proc_task", 0, RHINO_CONFIG_K_DYN_MEM_TASK_PRI,
+                        0, g_dyn_task_stack, RHINO_CONFIG_K_DYN_TASK_STACK,
+                        dyn_mem_proc_task, 1);
 }
 #endif
 

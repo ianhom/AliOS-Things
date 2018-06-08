@@ -8,31 +8,29 @@
 #include <string.h>
 #include <errno.h>
 #include <aos/aos.h>
-#include "hal/soc/soc.h"
-#include "dumpsys.h"
-
-#ifndef STDIO_UART
-#define STDIO_UART 0
-#endif
+#include <hal/hal.h>
 
 #define RET_CHAR  '\n'
 #define END_CHAR  '\r'
-#define PROMPT    "\r\n# "
+#define PROMPT    "# "
 #define EXIT_MSG  "exit"
-#define CLI_TAG   "\e[63m"  /* CLI TAG, use ESC characters, c(cli) ascii is 63 */
-
-#ifdef CONFIG_NET_LWIP
-#include "lwip/ip_addr.h"
-#include "lwip/apps/tftp.h"
-#endif /* CONFIG_NET_LWIP */
 
 static struct cli_st *cli = NULL;
 static int            cliexit = 0;
-extern uart_dev_t     uart_0;
+char                  esc_tag[64] = {0};
+static uint8_t        esc_tag_len = 0;
 extern void hal_reboot(void);
+extern void log_cli_init(void);
+
+#ifdef CONFIG_AOS_CLI_BOARD
+extern int board_cli_init(void);
+#endif
+
+#ifdef VCALL_RHINO
+extern uint32_t krhino_version_get(void);
+#endif
 
 int cli_getchar(char *inbuf);
-
 int cli_putstr(char *msg);
 
 /* Find the command 'name' in the cli commands table.
@@ -67,61 +65,46 @@ static const struct cli_command *lookup_command(char *name, int len)
     return NULL;
 }
 
-/*
- * This function is used to locate the command prefix (if any)
- * incorperated inside '<' and '>' paire. The leading spaces will be
- * skipped (if any) first. the prefix begins on '<' and ends on '>'.
- * the prefix length is calculated from '<' to '>'. If '<' and '>'
- * are not paired, error will be reported.
- *
- * @param inbuf [in] - the original command string.
- *        prefix [in|out] - holder of the thead of command prefix.
- *        len [in|out] - holder of the prefix length.
- * @return -1 - error.
- *          0 - no prefix found.
- *         a number>0 - the skipped length, including leading spaces
- *                      and prefix string.
- *
- * Example valid inputs:
- *   1. "help"
- *   2. " help "
- *   3. "<123>help"
- *   4. " <12 3> help "
- */
-static int check_cmd_prefix(const char *inbuf, char **prefix, int *len)
+
+/*proc one cli cmd and to run the according funtion
+* Returns: 0 on success:
+           1 fail 
+*/
+static int proc_onecmd(int argc,char * argv[])
 {
-    char *p = (char *)inbuf;
-    int ret = 0;
+    int i = 0;
+    const char *p;
+    const struct cli_command *command = NULL;
 
-    if (!inbuf || !prefix || !len) {
-        return -1;
-    }
-
-    while (*p == ' ') {
-        p++;
-        ret++;
-    }
-
-    if (*p != '<') {
+    if (argc < 1) {
         return 0;
     }
 
-    *prefix = p; /* prefix start with '<' */
-    while (*p != '>' && *p != '\0') {
-        *len += 1;
-        p++;
-        ret++;
+    if (!cli->echo_disabled) {
+        csp_printf("\r\n");
+        fflush(stdout);
     }
 
-    if (*p == '\0') {
-        return -1; /* no tailing '>' found */
+    /*
+    * Some comamands can allow extensions like foo.a, foo.b and hence
+    * compare commands before first dot.
+    */
+    i = ((p = strchr(argv[0], '.')) == NULL) ? 0 : (p - argv[0]);
+
+    command = lookup_command(argv[0], i);
+    if (command == NULL) {
+        return 1;
     }
 
-    *len += 1; /* prefix on with '>' */
-    ret++;
+    memset(cli->outbuf, 0, OUTBUF_SIZE);
 
-    return ret;
+    command->function(cli->outbuf, OUTBUF_SIZE, argc, argv);
+    cli_putstr(cli->outbuf);
+    return 0;
 }
+
+
+
 
 /* Parse input line and locate arguments (if any), keeping count of the number
 * of arguments and their locations.  Look up and call the corresponding cli
@@ -140,27 +123,19 @@ static int handle_input(char *inbuf)
         unsigned inQuote: 1;
         unsigned done: 1;
     } stat;
-    static char *argv[16];
-    int argc = 0;
+    static char *argvall[CLI_MAX_ONCECMD_NUM][CLI_MAX_ARG_NUM];
+    int argcall[CLI_MAX_ONCECMD_NUM] = {0};
+    /*
+    static char *argv[CLI_MAX_ONCECMD_NUM][CLI_MAX_ARG_NUM];
+    int argc = 0;*/
+    int cmdnum = 0;
+    int * pargc = &argcall[0];
     int i = 0;
-    const struct cli_command *command = NULL;
-    const char *p;
-    char *cmd_prefix = NULL;
-    int cmd_prefix_len = 0, skipped_len = 0;
+    int ret = 0;
 
-    memset((void *)&argv, 0, sizeof(argv));
+    memset((void *)&argvall, 0, sizeof(argvall));
+    memset((void *)&argcall, 0, sizeof(argcall));
     memset(&stat, 0, sizeof(stat));
-
-    /* Added for testbed cli, no impact on normal cli <beginning> */
-    skipped_len = check_cmd_prefix(inbuf, &cmd_prefix, &cmd_prefix_len);
-    if (skipped_len < 0) {
-        aos_cli_printf("\r\ncheck_cmd_prefix func failed\r\n");
-        return 2;
-    }
-
-    if (cmd_prefix_len > 0) {
-        inbuf += skipped_len;
-    }
 
     do {
         switch (inbuf[i]) {
@@ -187,8 +162,8 @@ static int handle_input(char *inbuf)
                 if (!stat.inQuote && !stat.inArg) {
                     stat.inArg = 1;
                     stat.inQuote = 1;
-                    argc++;
-                    argv[argc - 1] = &inbuf[i + 1];
+                    (*pargc)++;
+                    argvall[cmdnum][(*pargc) - 1] = &inbuf[i + 1];
                 } else if (stat.inQuote && stat.inArg) {
                     stat.inArg = 0;
                     stat.inQuote = 0;
@@ -209,69 +184,49 @@ static int handle_input(char *inbuf)
                 }
                 break;
 
+            case ';':
+                if (i > 0 && inbuf[i - 1] == '\\' && stat.inArg) {
+                    memcpy(&inbuf[i - 1], &inbuf[i],
+                           strlen(&inbuf[i]) + 1);
+                    --i;
+                    break;
+                }
+                if (stat.inQuote) {
+                    return 2;
+                }
+                if (!stat.inQuote && stat.inArg) {
+                    stat.inArg = 0;
+                    inbuf[i] = '\0';
+
+                    if(*pargc) {
+                        if(++cmdnum < CLI_MAX_ONCECMD_NUM) {
+                            pargc = &argcall[cmdnum];
+                        }
+                    }    
+                }
+
+                break;
+
             default:
                 if (!stat.inArg) {
                     stat.inArg = 1;
-                    argc++;
-                    argv[argc - 1] = &inbuf[i];
+                    (*pargc)++;
+                    argvall[cmdnum][(*pargc) - 1] = &inbuf[i];
                 }
                 break;
         }
-    } while (!stat.done && ++i < INBUF_SIZE);
+    } while (!stat.done && ++i < INBUF_SIZE && cmdnum < CLI_MAX_ONCECMD_NUM && (*pargc) < CLI_MAX_ARG_NUM);
 
     if (stat.inQuote) {
         return 2;
     }
 
-    if (argc < 1) {
-        return 0;
+    for( i = 0; i <= cmdnum && i < CLI_MAX_ONCECMD_NUM ; i++ )
+    {
+        ret |= proc_onecmd(argcall[i],argvall[i]);
     }
 
-    if (!cli->echo_disabled) {
-        printf("\r\n");
-        fflush(stdout);
-    }
-
-    /*
-    * Some comamands can allow extensions like foo.a, foo.b and hence
-    * compare commands before first dot.
-    */
-    i = ((p = strchr(argv[0], '.')) == NULL) ? 0 : (p - argv[0]);
-
-    command = lookup_command(argv[0], i);
-    if (command == NULL) {
-        return 1;
-    }
-
-    memset(cli->outbuf, 0, OUTBUF_SIZE);
-    cli_putstr("\r\n");
-
-    /* Added for testbed cli, no impact on normal cli <beginning> */
-    if (cmd_prefix_len > 0) {
-        *(cmd_prefix + cmd_prefix_len) = '\0'; /* safe to operate in place now */
-        aos_cli_printf(cmd_prefix);
-        aos_cli_printf("\r\n");
-    }
-    /* testbed cli <end> */
-
-    command->function(cli->outbuf, OUTBUF_SIZE, argc, argv);
-    cli_putstr(cli->outbuf);
-
-    /* Added for testbed cli, no impact on normal cli <beginning> */
-    if (cmd_prefix_len > 0) {
-        /* Wait for output from special commands: umesh ping/autotest */
-        if ((strcmp(command->name, "umesh") == 0) &&
-            ((strcmp(argv[1], "ping") == 0) ||
-             (strcmp(argv[1], "autotest") == 0))) {
-            aos_msleep(500);
-        }
-
-        aos_cli_printf(cmd_prefix);
-        aos_cli_printf("\r\n");
-    }
-    /* testbed cli <end> */
-
-    return 0;
+    return ret;
 }
 
 /* Perform basic tab-completion on the input buffer by string-matching the
@@ -325,41 +280,140 @@ static void tab_complete(char *inbuf, unsigned int *bp)
  */
 static int get_input(char *inbuf, unsigned int *bp)
 {
+    char c;
+    int  esc = 0, key1 = -1, key2 = -1;
     if (inbuf == NULL) {
         aos_cli_printf("inbuf_null\r\n");
         return 0;
     }
 
-    while (cli_getchar(&inbuf[*bp]) == 1) {
-        if (inbuf[*bp] == RET_CHAR) {
-            continue;
-        }
-        if (inbuf[*bp] == END_CHAR) {   /* end of input line */
+    cli->his_idx = (cli->his_cur + HIS_SIZE - 1) % HIS_SIZE;
+    while (cli_getchar(&c) == 1) {
+        if (c == RET_CHAR || c == END_CHAR) {   /* end of input line */
             inbuf[*bp] = '\0';
             *bp = 0;
             return 1;
         }
 
-        if ((inbuf[*bp] == 0x08) || /* backspace */
-            (inbuf[*bp] == 0x7f)) { /* DEL */
+        if (c == 0x1b) { /* escape sequence */
+            esc = 1;
+            key1 = -1;
+            key2 = -1;
+            continue;
+        }
+
+        if (esc) {
+            if (key1 < 0) {
+                key1 = c;
+                if (key1 != 0x5b) {
+                    /* not '[' */
+                    inbuf[(*bp)] = 0x1b;
+                    (*bp) ++;
+                    inbuf[*bp] = key1;
+                    (*bp) ++;
+                    if (!cli->echo_disabled) {
+                        csp_printf("\x1b%c", key1);
+                        fflush(stdout);
+                    }
+                    esc = 0; /* quit escape sequence */
+                }
+                continue;
+            }
+
+            if (key2 < 0) {
+                key2 = c;
+                if (key2 == 't') {
+                    esc_tag[0] = 0x1b;
+                    esc_tag[1] = key1;
+                    esc_tag_len = 2;
+                }
+            }
+
+            if (key2 != 0x41 && key2 != 0x42 && key2 != 't') {
+                /*unsupported esc sequence*/
+                inbuf[(*bp)] = 0x1b;
+                (*bp) ++;
+                inbuf[*bp] = key1;
+                (*bp) ++;
+                inbuf[*bp] = key2;
+                (*bp) ++;
+                if (!cli->echo_disabled) {
+                    csp_printf("\x1b%c%c", key1, key2);
+                    fflush(stdout);
+                }
+                esc_tag[0] = '\x0';
+                esc_tag_len = 0;
+                esc = 0; /* quit escape sequence */
+                continue;
+            }
+
+            if (key2 == 0x41) { /* UP */
+                char *cmd = cli->history[cli->his_idx];
+                cli->his_idx = (cli->his_idx + HIS_SIZE - 1) % HIS_SIZE;
+                strncpy(inbuf, cmd, INBUF_SIZE);
+                csp_printf("\r\n" PROMPT "%s", inbuf);
+                *bp = strlen(inbuf);
+                esc_tag[0] = '\x0';
+                esc_tag_len = 0;
+                esc = 0; /* quit escape sequence */
+                continue;
+            }
+
+            if (key2 == 0x42) { /* DOWN */
+                char *cmd = cli->history[cli->his_idx];
+                cli->his_idx = (cli->his_idx + 1) % HIS_SIZE;
+                strncpy(inbuf, cmd, INBUF_SIZE);
+                csp_printf("\r\n" PROMPT "%s", inbuf);
+                *bp = strlen(inbuf);
+                esc_tag[0] = '\x0';
+                esc_tag_len = 0;
+                esc = 0; /* quit escape sequence */
+                continue;
+            }
+
+
+            /* ESC_TAG */
+            if (esc_tag_len >= sizeof(esc_tag)) {
+                esc_tag[0] = '\x0';
+                esc_tag_len = 0;
+                esc = 0; /* quit escape sequence */
+                csp_printf("Error: esc_tag buffer overflow\r\n");
+                fflush(stdout);
+                continue;
+            }
+            esc_tag[esc_tag_len++] = c;
+            if (c == 'm') {
+                esc_tag[esc_tag_len++] = '\x0';
+                if (!cli->echo_disabled) {
+                    csp_printf("%s", esc_tag);
+                    fflush(stdout);
+                }
+                esc = 0; /* quit escape sequence */
+            }
+            continue;
+        }
+
+        inbuf[*bp] = c;
+        if ((c == 0x08) || /* backspace */
+            (c == 0x7f)) { /* DEL */
             if (*bp > 0) {
                 (*bp)--;
                 if (!cli->echo_disabled) {
-                    printf("%c %c", 0x08, 0x08);
+                    csp_printf("%c %c", 0x08, 0x08);
                     fflush(stdout);
                 }
             }
             continue;
         }
 
-        if (inbuf[*bp] == '\t') {
+        if (c == '\t') {
             inbuf[*bp] = '\0';
             tab_complete(inbuf, bp);
             continue;
         }
 
         if (!cli->echo_disabled) {
-            printf("%c", inbuf[*bp]);
+            csp_printf("%c", c);
             fflush(stdout);
         }
 
@@ -382,17 +436,7 @@ static int get_input(char *inbuf, unsigned int *bp)
 static void print_bad_command(char *cmd_string)
 {
     if (cmd_string != NULL) {
-        char *c = cmd_string;
-        aos_cli_printf("command '");
-        while (*c != '\0') {
-            if ((*c) >= 0x20 && (*c) <= 0x7f) {
-                aos_cli_printf("%c", *c);
-            } else {
-                aos_cli_printf("\\0x%x", *c);
-            }
-            ++c;
-        }
-        aos_cli_printf("' not found\r\n");
+        aos_cli_printf("command '%s' not found\r\n", cmd_string);
     }
 }
 
@@ -417,6 +461,11 @@ static void cli_main(void *data)
                 break;
             }
 #endif
+            if (strlen(cli->inbuf) > 0) {
+                strncpy(cli->history[cli->his_cur], cli->inbuf, INBUF_SIZE);
+                cli->his_cur = (cli->his_cur + 1) % HIS_SIZE;
+            }
+
             ret = handle_input(msg);
             if (ret == 1) {
                 print_bad_command(msg);
@@ -424,6 +473,9 @@ static void cli_main(void *data)
                 aos_cli_printf("syntax error\r\n");
             }
 
+            aos_cli_printf("\r\n");
+            esc_tag[0] = '\x0';
+            esc_tag_len = 0;
             aos_cli_printf(PROMPT);
         }
     }
@@ -439,42 +491,26 @@ static void help_cmd(char *buf, int len, int argc, char **argv);
 static void version_cmd(char *buf, int len, int argc, char **argv);
 static void echo_cmd(char *buf, int len, int argc, char **argv);
 static void exit_cmd(char *buf, int len, int argc, char **argv);
-static void task_cmd(char *buf, int len, int argc, char **argv);
 static void devname_cmd(char *buf, int len, int argc, char **argv);
-static void dumpsys_cmd(char *buf, int len, int argc, char **argv);
 static void reboot_cmd(char *buf, int len, int argc, char **argv);
 static void uptime_cmd(char *buf, int len, int argc, char **argv);
 static void ota_cmd(char *buf, int len, int argc, char **argv);
-static void wifi_debug_cmd(char *buf, int len, int argc, char **argv);
-#ifdef CONFIG_NET_LWIP
-static void tftp_cmd(char *buf, int len, int argc, char **argv);
-#endif /* CONFIG_NET_LWIP */
-static void udp_cmd(char *buf, int len, int argc, char **argv);
 
 static const struct cli_command built_ins[] = {
+    /*cli self*/
     {"help",        NULL,       help_cmd},
-    {"sysver",      NULL,       version_cmd},
     {"echo",        NULL,       echo_cmd},
     {"exit",        "CLI exit", exit_cmd},
-
-    /* os */
-    {"tasklist",    "list all thread info", task_cmd},
-
-    /* net */
-#ifndef CONFIG_NO_TCPIP
-#ifdef CONFIG_NET_LWIP
-    {"tftp",        "tftp server/client control", tftp_cmd},
-#endif /* CONFIG_NET_LWIP */
-    {"udp",         "[ip] [port] [string data] send udp data", udp_cmd},
-#endif
-
-    /* others */
     {"devname",     "print device name", devname_cmd},
-    {"dumpsys",     "dump system info",  dumpsys_cmd},
+
+    /*rhino*/
+    {"sysver",      NULL,       version_cmd},
     {"reboot",      "reboot system",     reboot_cmd},
+
+    /*aos_rhino*/
     {"time",        "system time",       uptime_cmd},
     {"ota",         "system ota",        ota_cmd},
-    {"wifi_debug",  "wifi debug mode",   wifi_debug_cmd},
+
 };
 
 /* Built-in "help" command: prints all registered commands and their help
@@ -490,25 +526,28 @@ static void help_cmd(char *buf, int len, int argc, char **argv)
 #endif
 
     aos_cli_printf( "====Build-in Commands====\r\n" );
+    aos_cli_printf( "====Support six cmds once, seperate by ; ====\r\n" );
+
     for (i = 0, n = 0; i < MAX_COMMANDS && n < cli->num_commands; i++) {
         if (cli->commands[i]->name) {
             aos_cli_printf("%s: %s\r\n", cli->commands[i]->name,
                            cli->commands[i]->help ?
                            cli->commands[i]->help : "");
             n++;
-            if ( n == build_in_count - 1 ) {
+            if ( n == build_in_count ) {
                 aos_cli_printf("\r\n");
                 aos_cli_printf("====User Commands====\r\n");
             }
         }
     }
+
 }
 
 
 static void version_cmd(char *buf, int len, int argc, char **argv)
 {
 #ifdef VCALL_RHINO
-    aos_cli_printf("kernel version :%s\r\n", krhino_version_get());
+    aos_cli_printf("kernel version :%d\r\n", krhino_version_get());
 #else
     aos_cli_printf("kernel version :posix\r\n");
 #endif
@@ -537,98 +576,11 @@ static void exit_cmd(char *buf, int len, int argc, char **argv)
     return;
 }
 
-#ifndef CONFIG_NO_TCPIP
-#include <aos/network.h>
-static void udp_cmd(char *buf, int len, int argc, char **argv)
-{
-    struct sockaddr_in saddr;
-    memset(&saddr, 0, sizeof(saddr));
-    saddr.sin_family = AF_INET;
-    saddr.sin_port = htons(atoi(argv[2]));
-    saddr.sin_addr.s_addr = inet_addr(argv[1]);
-
-    int sockfd = socket(AF_INET, SOCK_DGRAM, 0);
-
-    if (sockfd < 0) {
-        aos_cli_printf("error creating socket!\n");
-        return;
-    }
-
-    int ret = sendto(sockfd, argv[3], strlen(argv[3]), 0,
-                     (struct sockaddr *)&saddr, sizeof(saddr));
-    if (ret < 0) {
-        aos_cli_printf("error send data %d!\n", ret);
-    }
-
-    close(sockfd);
-}
-#endif
-
-static void task_cmd(char *buf, int len, int argc, char **argv)
-{
-    dumpsys_task_func(NULL, 0, 1);
-}
-
 static void devname_cmd(char *buf, int len, int argc, char **argv)
 {
-    aos_cli_printf("%s\r\n", SYSINFO_DEVICE_NAME);
+    aos_cli_printf("device name: %s\r\n", SYSINFO_DEVICE_NAME);
 }
 
-static void dumpsys_cmd(char *buf, int len, int argc, char **argv)
-{
-#ifdef VCALL_RHINO
-    dumpsys_func(buf, len, argc, argv);
-#endif
-}
-
-#ifdef CONFIG_NET_LWIP
-static void tftp_get_done(int error, int len)
-{
-    if (error == 0) {
-        aos_cli_printf("tftp client get succeed\r\n", len);
-    } else {
-        aos_cli_printf("tftp client get failed\r\n");
-    }
-}
-
-extern tftp_context_t client_ctx;
-extern tftp_context_t ota_ctx;
-void ota_get_done(int error, int len);
-static void tftp_cmd(char *buf, int len, int argc, char **argv)
-{
-    if (argc < 3) {
-        goto tftp_print_usage;
-    }
-
-    if (strncmp(argv[1], "server", 6) == 0) {
-        if (strncmp(argv[2], "start", 5) == 0) {
-            err_t err = tftp_server_start();
-            aos_cli_printf("tftp start server %s\r\n", err == ERR_OK ? "done" : "failed");
-            return;
-        } else if (strncmp(argv[2], "stop", 4) == 0) {
-            tftp_server_stop();
-            aos_cli_printf("tftp stop server done\r\n");
-            return;
-        }
-        goto tftp_print_usage;
-    } else if (strncmp(argv[1], "get", 3) == 0) {
-        ip_addr_t dst_addr;
-        ipaddr_aton(argc == 4 ? argv[2] : "10.0.0.2", &dst_addr);
-        tftp_client_get(&dst_addr, argv[argc - 1], &client_ctx, tftp_get_done);
-        return;
-    } else if (strncmp(argv[1], "ota", 3) == 0) {
-        ip_addr_t dst_addr;
-        uint8_t   gw_ip[4] = {10, 0 , 0, 2};
-        memcpy(&dst_addr, gw_ip, 4);
-        tftp_client_get(&dst_addr, argv[2], &ota_ctx, ota_get_done);
-        return;
-    }
-
-tftp_print_usage:
-    aos_cli_printf("Usage: tftp server start/stop\r\n");
-    aos_cli_printf("       tftp get path/to/file\r\n");
-}
-#endif /* CONFIG_NET_LWIP */
 
 static void reboot_cmd(char *buf, int len, int argc, char **argv)
 {
@@ -639,7 +591,7 @@ static void reboot_cmd(char *buf, int len, int argc, char **argv)
 
 static void uptime_cmd(char *buf, int len, int argc, char **argv)
 {
-    aos_cli_printf("UP time %ldms\r\n", aos_now_ms());
+    aos_cli_printf("UP time %ld ms\r\n", (long)aos_now_ms());
 }
 
 void tftp_ota_thread(void *arg)
@@ -650,11 +602,6 @@ void tftp_ota_thread(void *arg)
 static void ota_cmd(char *buf, int len, int argc, char **argv)
 {
     aos_task_new("LOCAL OTA", tftp_ota_thread, 0, 4096);
-}
-
-static void wifi_debug_cmd(char *buf, int len, int argc, char **argv)
-{
-    hal_wifi_start_debug_mode();
 }
 
 /* ------------------------------------------------------------------------- */
@@ -714,6 +661,9 @@ int aos_cli_register_commands(const struct cli_command *cmds, int num_cmds)
 {
     int i;
     int err;
+    if (!cli) {
+        return 1;
+    }
     for (i = 0; i < num_cmds; i++) {
         if ((err = aos_cli_register_command(cmds++)) != 0) {
             return err;
@@ -736,17 +686,16 @@ int aos_cli_unregister_commands(const struct cli_command *cmds, int num_cmds)
     return 0;
 }
 
-__attribute__ ((weak)) int board_cli_init(void)
-{
-    return 0;
-}
-
 int aos_cli_stop(void)
 {
     cliexit = 1;
 
     return 0;
 }
+
+#ifndef CONFIG_AOS_CLI_STACK_SIZE
+#define CONFIG_AOS_CLI_STACK_SIZE 2048
+#endif
 
 int aos_cli_init(void)
 {
@@ -766,7 +715,7 @@ int aos_cli_init(void)
         goto init_general_err;
     }
 
-    ret = aos_task_new_ext(&task, "cli", cli_main, 0, 4096, AOS_DEFAULT_APP_PRI);
+    ret = aos_task_new_ext(&task, "cli", cli_main, 0, CONFIG_AOS_CLI_STACK_SIZE, AOS_DEFAULT_APP_PRI + 1);
     if (ret != 0) {
         aos_cli_printf("Error: Failed to create cli thread: %d\r\n",
                        ret);
@@ -776,7 +725,11 @@ int aos_cli_init(void)
     cli->initialized = 1;
     cli->echo_disabled = 0;
 
+#ifdef CONFIG_AOS_CLI_BOARD
     board_cli_init();
+#endif
+
+    log_cli_init();
 
     return 0;
 
@@ -789,6 +742,12 @@ init_general_err:
     return ret;
 }
 
+const char *aos_cli_get_tag(void)
+{
+    return esc_tag;
+}
+
+#if defined BUILD_BIN || defined BUILD_KERNEL
 int aos_cli_printf(const char *msg, ...)
 {
     va_list ap;
@@ -799,8 +758,11 @@ int aos_cli_printf(const char *msg, ...)
 
     memset(message, 0, 256);
 
-    strcpy(message, CLI_TAG);
-    sz = strlen(CLI_TAG);
+    sz = 0;
+    if (esc_tag_len) {
+        strcpy(message, esc_tag);
+        sz = strlen(esc_tag);
+    }
     pos = message + sz;
 
     va_start(ap, msg);
@@ -815,11 +777,17 @@ int aos_cli_printf(const char *msg, ...)
 
     return 0;
 }
+#endif
 
 int cli_putstr(char *msg)
 {
+    uart_dev_t uart_stdio;
+
+    memset(&uart_stdio, 0, sizeof(uart_stdio));
+    uart_stdio.port = 0;
+
     if (msg[0] != 0) {
-        hal_uart_send(&uart_0, msg, strlen(msg), 0);
+        hal_uart_send(&uart_stdio, (void *)msg, strlen(msg), HAL_WAIT_FOREVER);
     }
 
     return 0;
@@ -827,7 +795,16 @@ int cli_putstr(char *msg)
 
 int cli_getchar(char *inbuf)
 {
-    if (hal_uart_recv(&uart_0, inbuf, 1, NULL, 0xFFFFFFFF) == 0) {
+    int ret = -1;
+    uint32_t recv_size = 0;
+    uart_dev_t uart_stdio;
+
+    memset(&uart_stdio, 0, sizeof(uart_stdio));
+    uart_stdio.port = 0;
+
+    ret = hal_uart_recv_II(&uart_stdio, inbuf,  1, &recv_size,  HAL_WAIT_FOREVER);
+
+    if ((ret == 0) && (recv_size == 1)) {
         return 1;
     } else {
         return 0;

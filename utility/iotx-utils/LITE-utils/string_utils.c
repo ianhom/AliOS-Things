@@ -8,18 +8,18 @@
 char *LITE_format_string(const char *fmt, ...)
 {
     va_list         ap;
-    char           *tmp = NULL;
+    char           tmp[1024];
     char           *dst;
     int             rc = -1;
 
     va_start(ap, fmt);
-    rc = vasprintf(&tmp, fmt, ap);
+    rc = vsprintf(tmp, fmt, ap);
     va_end(ap);
     assert(tmp);
     assert(rc < 1024);
 
     dst = LITE_strdup(tmp);
-    free(tmp);
+    //free(tmp);
 
     return dst;
 }
@@ -27,19 +27,19 @@ char *LITE_format_string(const char *fmt, ...)
 char *LITE_format_nstring(const int len, const char *fmt, ...)
 {
     va_list         ap;
-    char           *tmp = NULL;
+    char           tmp[1024];
     char           *dst;
     int             rc = -1;
 
     va_start(ap, fmt);
-    rc = vasprintf(&tmp, fmt, ap);
+    rc = vsprintf(tmp, fmt, ap);
     va_end(ap);
     assert(tmp);
     assert(rc < 1024);
 
     dst = LITE_malloc(len + 1);
     LITE_snprintf(dst, (len + 1), "%s", tmp);
-    free(tmp);
+    //free(tmp);
 
     return dst;
 }

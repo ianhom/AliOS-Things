@@ -17,9 +17,6 @@ static kstat_t event_create(kevent_t *event, const name_t *name, uint32_t flags,
     klist_init(&event->blk_obj.blk_list);
     event->blk_obj.blk_policy = BLK_POLICY_PRI;
     event->blk_obj.name       = name;
-#if (RHINO_CONFIG_KOBJ_SET > 0)
-    event->blk_obj.handle = NULL;
-#endif
     event->flags              = flags;
     event->mm_alloc_flag      = mm_alloc_flag;
 
@@ -236,16 +233,12 @@ kstat_t krhino_event_get(kevent_t *event, uint32_t flags, uint8_t opt,
 
     RHINO_CRITICAL_EXIT_SCHED();
 
-#ifndef RHINO_CONFIG_PERF_NO_PENDEND_PROC
     RHINO_CPU_INTRPT_DISABLE();
 
     /* so the task is waked up, need know which reason cause wake up */
     stat = pend_state_end_proc(g_active_task[cpu_cur_get()]);
 
     RHINO_CPU_INTRPT_ENABLE();
-#else
-    stat = RHINO_SUCCESS;
-#endif
 
     return stat;
 }
